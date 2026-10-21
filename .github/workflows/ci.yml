@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Mathlib's compiled files take most of the runner's disk; remove preinstalled toolchains
+      # that the build does not use.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: actions/checkout@v7
+      - uses: leanprover/lean-action@v1
+      # The audit sees a module's proofs only through its own `import all` line.
+      - name: Check that the audit imports every module
+        run: >-
+          diff <( (echo Phylogenetics.lean; find Phylogenetics -name '*.lean') | sed 's/\.lean$//; s#/#.#g' | sort)
+          <(grep '^import all Phylogenetics' scripts/Audit.lean | sed 's/^import all //' | sort)
+      - name: Audit the axioms
+        run: lake env lean scripts/Audit.lean
