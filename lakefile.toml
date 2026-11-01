@@ -1,7 +1,7 @@
 name = "Phylogenetics"
-version = "0.2.0"
+version = "0.3.0"
 keywords = ["math", "phylogenetics"]
-description = "Phylogenetic trees and networks, the coalescent and the (network) multispecies coalescent, quartet concordance factors, gene trees"
+description = "Phylogenetic trees and networks, directed multigraphs and blobs, the coalescent and the (network) multispecies coalescent, quartet concordance factors and hypothesis tests"
 defaultTargets = ["Phylogenetics"]
 
 [leanOptions]
@@ -12,7 +12,7 @@ maxSynthPendingDepth = 3
 [[require]]
 name = "mathlib"
 scope = "leanprover-community"
-rev = "v4.35.0-rc4"
+rev = "v4.36.0-rc1"
 
 [[lean_lib]]
 name = "Phylogenetics"

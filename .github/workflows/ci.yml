@@ -21,6 +21,8 @@ jobs:
           df -h /
       - uses: actions/checkout@v7
       - uses: leanprover/lean-action@v1
+        with:
+          build-args: "--wfail"
       # The audit sees a module's proofs only through its own `import all` line.
       - name: Check that the audit imports every module
         run: >-

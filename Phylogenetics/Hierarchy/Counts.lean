@@ -15,7 +15,6 @@ realized by `2n-3` rooted gene trees, corresponding to choices of an edge on whi
 root" (Allman, Degnan and Rhodes 2011, Section 1, with the count `(2n-3)!!` of rooted binary
 topologies cited from [Felsenstein 2004]).
 
-* `IsBinaryHierarchy G`: `G` is a rooted binary tree on the leaves `L`, given by its clusters.
 * `section1_card_rooted`: there are `(2n-3)!!` rooted binary trees on `n ≥ 1` labelled leaves.
 * `section1_card_rootings`: each unrooted binary tree on `n ≥ 2` leaves has `2n-3` rooted versions.
 * `section1_card_unrooted`: there are `(2n-5)!!` unrooted binary trees on `n ≥ 3` leaves.
@@ -44,10 +43,6 @@ namespace Phylogenetics
 
 open Finset
 
-/-- A rooted binary tree on the leaves `L`, given by its clusters: a hierarchy in which every
-cluster with at least two leaves is the union of two disjoint clusters. -/
-def IsBinaryHierarchy {L : Type*} [Fintype L] [DecidableEq L] (G : Finset (Finset L)) : Prop :=
-  IsHierarchy G ∧ ∀ A ∈ G, 2 ≤ #A → ∃ B ∈ G, ∃ C ∈ G, Disjoint B C ∧ B ∪ C = A
 
 section General
 

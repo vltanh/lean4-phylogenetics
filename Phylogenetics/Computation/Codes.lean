@@ -2,6 +2,7 @@ module
 
 public import Mathlib.Algebra.Order.Ring.Star
 public import Phylogenetics.Coalescent.Factorization
+public import Phylogenetics.Hierarchy.Defs
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.NormNum
 

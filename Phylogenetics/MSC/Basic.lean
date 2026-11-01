@@ -1,6 +1,7 @@
 module
 
 public import Phylogenetics.Coalescent.Outcome
+public import Phylogenetics.MSC.Defs
 
 /-!
 # Basic properties of the multispecies coalescent
@@ -21,12 +22,6 @@ most results here assume `H` is a hierarchy (`IsHierarchy H`) and the lengths ar
   at a node with three children (and the same for `enteringDist`).
 * `forestDist_singleton_of_card_le_one`, `forestDist_id_singleton`: at a leaf from which at most
   one lineage is sampled, the leaving forest is the sampled forest.
-* `IsHierarchy.disjoint_of_mem_childClusters`, `IsHierarchy.sup_childClusters`,
-  `IsHierarchy.two_le_card_childClusters`: the children of a cluster with at least two elements
-  partition it; `IsHierarchy.childClusters_eq`, `IsHierarchy.childClusters_eq_pair`,
-  `IsHierarchy.childClusters_eq_triple`: recognizing the children;
-  `SpeciesTree.isBinary_iff_card_childClusters`: a species tree is binary if and only if every
-  such cluster has exactly two children.
 * `forestDist_support`: the forest leaving the population above `A` is a forest on exactly the
   lineages sampled from `A`, containing their singletons (`enteringDist_support`: the same for the
   entering forest; `forestDist_univ_support`: above the root, it has at most one root).
@@ -45,14 +40,6 @@ namespace Phylogenetics
 open Finset
 
 variable {X : Type*} [Fintype X] [DecidableEq X] {L : Type*} [Fintype L] [DecidableEq L]
-
-/-- A hierarchy of clusters on `X`. -/
-def IsHierarchy (H : Finset (Finset X)) : Prop :=
-  univ ∈ H ∧ (∀ x : X, {x} ∈ H) ∧ (∀ A ∈ H, A.Nonempty) ∧
-    ∀ A ∈ H, ∀ B ∈ H, A ⊆ B ∨ B ⊆ A ∨ Disjoint A B
-
-theorem SpeciesTree.isHierarchy (σ : SpeciesTree X) : IsHierarchy σ.clusters :=
-  ⟨σ.univ_mem, σ.singleton_mem, σ.nonempty_of_mem, σ.laminar⟩
 
 /-- The distribution of the forest entering the population above `A`: the union of the
 independent forests leaving the populations of the children of `A`, together with the singletons
@@ -218,33 +205,6 @@ theorem enteringDist_of_childClusters_eq_triple {H : Finset (Finset X)} {len : F
     prod_insert (by simp [hBC, hBD]), prod_pair hCD, sup_insert, sup_insert, sup_singleton]
   simp [hBC.symm, hBD.symm, hCD.symm, mul_assoc, union_assoc]
 
-theorem mem_childClusters {H : Finset (Finset X)} {A B : Finset X} :
-    B ∈ childClusters H A ↔ B ∈ H ∧ B ⊂ A ∧ ∀ C ∈ H, B ⊂ C → ¬ C ⊂ A :=
-  mem_filter
-
-theorem childClusters_subset (H : Finset (Finset X)) (A : Finset X) : childClusters H A ⊆ H :=
-  filter_subset _ _
-
-/-- In a hierarchy, the children of a cluster with at least two elements partition it, and a
-singleton has no children. -/
-theorem IsHierarchy.childClusters_singleton {H : Finset (Finset X)} (hH : IsHierarchy H) (x : X) :
-    childClusters H {x} = ∅ := by
-  unfold childClusters
-  rw [Finset.filter_eq_empty_iff]
-  rintro B hB ⟨hBx, -⟩
-  rw [Finset.ssubset_singleton_iff] at hBx
-  subst hBx
-  exact Finset.not_nonempty_empty (hH.2.2.1 _ hB)
-
-/-- Two distinct children of a cluster of a hierarchy are disjoint. -/
-theorem IsHierarchy.disjoint_of_mem_childClusters {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A B C : Finset X} (hB : B ∈ childClusters H A) (hC : C ∈ childClusters H A) (hBC : B ≠ C) :
-    Disjoint B C := by
-  rw [mem_childClusters] at hB hC
-  rcases hH.2.2.2 B hB.1 C hC.1 with h | h | h
-  · exact absurd hC.2.1 (hB.2.2 C hC.1 (lt_of_le_of_ne h hBC))
-  · exact absurd hB.2.1 (hC.2.2 B hB.1 (lt_of_le_of_ne h hBC.symm))
-  · exact h
 
 omit [Fintype X] in
 theorem mem_sampledForest {s : L → X} {A : Finset X} {C : Finset L} :
@@ -503,254 +463,6 @@ theorem enteringDist_sum {H : Finset (Finset X)} (hH : IsHierarchy H) (len : Fin
   rw [← Fintype.prod_sum (fun (B : childClusters H A) (F : Finset (Finset L)) =>
     forestDist H len s B F)]
   exact Finset.prod_eq_one fun B _ => forestDist_sum hH len s (mem_childClusters.1 B.2).1
-
-/-! ### The children of a cluster of a hierarchy -/
-
-/-- Every element of a cluster `A` with at least two elements lies in a child of `A`. -/
-theorem IsHierarchy.exists_mem_childClusters {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A : Finset X} (hA : 2 ≤ #A) {x : X} (hx : x ∈ A) : ∃ B ∈ childClusters H A, x ∈ B := by
-  have hxA : ({x} : Finset X) ⊂ A := by
-    refine (singleton_subset_iff.2 hx).ssubset_of_ne ?_
-    rintro rfl
-    simp at hA
-  obtain ⟨B, hB, hmax⟩ := (H.filter fun C => x ∈ C ∧ C ⊂ A).exists_max_image card
-    ⟨{x}, mem_filter.2 ⟨hH.2.1 x, mem_singleton_self x, hxA⟩⟩
-  rw [mem_filter] at hB
-  refine ⟨B, mem_childClusters.2 ⟨hB.1, hB.2.2, fun C hC hBC hCA => ?_⟩, hB.2.1⟩
-  have := hmax C (mem_filter.2 ⟨hC, hBC.subset hB.2.1, hCA⟩)
-  exact absurd (card_lt_card hBC) (not_lt.2 this)
-
-/-- The children of a cluster `A` with at least two elements cover it. -/
-theorem IsHierarchy.sup_childClusters {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A : Finset X} (hA : 2 ≤ #A) : (childClusters H A).sup id = A := by
-  refine le_antisymm (Finset.sup_le fun B hB => (mem_childClusters.1 hB).2.1.subset) ?_
-  intro x hx
-  obtain ⟨B, hB, hxB⟩ := hH.exists_mem_childClusters hA hx
-  exact Finset.mem_sup.2 ⟨B, hB, hxB⟩
-
-/-- The children of a cluster are pairwise disjoint. -/
-theorem IsHierarchy.pairwiseDisjoint_childClusters {H : Finset (Finset X)} (hH : IsHierarchy H)
-    (A : Finset X) : (childClusters H A : Set (Finset X)).PairwiseDisjoint id :=
-  fun _ hB _ hC hBC => hH.disjoint_of_mem_childClusters hB hC hBC
-
-/-- A cluster with at least two elements has at least two children. -/
-theorem IsHierarchy.two_le_card_childClusters {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A : Finset X} (hA : 2 ≤ #A) : 2 ≤ #(childClusters H A) := by
-  by_contra hlt
-  have hle : #(childClusters H A) ≤ 1 := by omega
-  obtain ⟨x, hx⟩ : A.Nonempty := card_pos.1 (by omega)
-  obtain ⟨B, hB, -⟩ := hH.exists_mem_childClusters hA hx
-  rw [Finset.card_le_one_iff] at hle
-  have hAB : A ⊆ B := fun y hy => by
-    obtain ⟨C, hC, hyC⟩ := hH.exists_mem_childClusters hA hy
-    exact hle hC hB ▸ hyC
-  exact not_subset_of_ssubset (mem_childClusters.1 hB).2.1 hAB
-
-/-- A characterization of the children: a family `T ⊆ H` of at least two pairwise disjoint
-clusters covering `A`, such that every cluster of `H` strictly inside `A` lies inside one of
-them, is the family of children of `A`. -/
-theorem IsHierarchy.childClusters_eq {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A : Finset X} {T : Finset (Finset X)} (hT : T ⊆ H)
-    (hdisj : (T : Set (Finset X)).PairwiseDisjoint id) (hsup : T.sup id = A) (h2 : 2 ≤ #T)
-    (hcov : ∀ E ∈ H, E ⊂ A → ∃ B ∈ T, E ⊆ B) : childClusters H A = T := by
-  have hsubA : ∀ B ∈ T, B ⊆ A := fun B hB => hsup ▸ le_sup (f := id) hB
-  have hssubA : ∀ B ∈ T, B ⊂ A := by
-    intro B hB
-    refine (hsubA B hB).ssubset_of_ne ?_
-    rintro rfl
-    obtain ⟨C, hC, hCB⟩ := exists_mem_ne (by omega : 1 < #T) B
-    have hdis : Disjoint C B := hdisj hC hB hCB
-    obtain ⟨y, hy⟩ := hH.2.2.1 C (hT hC)
-    exact Finset.disjoint_left.1 hdis hy (hsubA C hC hy)
-  have heq : ∀ B ∈ T, ∀ B' ∈ T, ∀ E ∈ H, B ⊆ E → E ⊆ B' → B = B' := by
-    intro B hB B' hB' E hE hBE hEB'
-    by_contra hne
-    obtain ⟨y, hy⟩ := hH.2.2.1 B (hT hB)
-    exact Finset.disjoint_left.1 (hdisj hB hB' hne) hy (hEB' (hBE hy))
-  ext B
-  constructor
-  · intro hB
-    obtain ⟨hBH, hBA, hmax⟩ := mem_childClusters.1 hB
-    obtain ⟨B', hB', hBB'⟩ := hcov B hBH hBA
-    rcases hBB'.eq_or_ssubset with h | h
-    · exact h ▸ hB'
-    · exact absurd (hssubA B' hB') (hmax B' (hT hB') h)
-  · intro hB
-    refine mem_childClusters.2 ⟨hT hB, hssubA B hB, fun C hC hBC hCA => ?_⟩
-    obtain ⟨B', hB', hCB'⟩ := hcov C hC hCA
-    have := heq B hB B' hB' C hC hBC.subset hCB'
-    subst this
-    exact absurd (hBC.trans_le hCB') (lt_irrefl _)
-
-/-- Two disjoint clusters whose union is `A` are the children of `A`. -/
-theorem IsHierarchy.childClusters_eq_pair {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A B C : Finset X} (hB : B ∈ H) (hC : C ∈ H) (hBC : Disjoint B C) (hA : B ∪ C = A) :
-    childClusters H A = {B, C} := by
-  obtain ⟨b, hb⟩ := hH.2.2.1 B hB
-  have hne : B ≠ C := by
-    rintro rfl
-    exact Finset.disjoint_left.1 hBC hb hb
-  refine hH.childClusters_eq (by simp [insert_subset_iff, hB, hC]) ?_ (by simp [hA]) ?_ ?_
-  · intro P hP Q hQ hPQ
-    simp only [coe_insert, coe_singleton, Set.mem_insert_iff, Set.mem_singleton_iff] at hP hQ
-    rcases hP with rfl | rfl <;> rcases hQ with rfl | rfl
-    · exact absurd rfl hPQ
-    · exact hBC
-    · exact hBC.symm
-    · exact absurd rfl hPQ
-  · rw [card_pair hne]
-  · intro E hE hEA
-    simp only [mem_insert, mem_singleton, exists_eq_or_imp, exists_eq_left]
-    by_cases hEC : Disjoint E C
-    · left
-      intro y hy
-      have := hEA.subset hy
-      rw [← hA, mem_union] at this
-      exact this.resolve_right (Finset.disjoint_left.1 hEC hy)
-    by_cases hEB : Disjoint E B
-    · right
-      intro y hy
-      have := hEA.subset hy
-      rw [← hA, mem_union] at this
-      exact this.resolve_left (Finset.disjoint_left.1 hEB hy)
-    exfalso
-    obtain ⟨y, hyE, hyB⟩ := Finset.not_disjoint_iff.1 hEB
-    obtain ⟨z, hzE, hzC⟩ := Finset.not_disjoint_iff.1 hEC
-    have hBE : B ⊆ E := by
-      rcases hH.2.2.2 E hE B hB with h | h | h
-      · exact absurd (h hzE) (Finset.disjoint_right.1 hBC hzC)
-      · exact h
-      · exact absurd hyB (Finset.disjoint_left.1 h hyE)
-    have hCE : C ⊆ E := by
-      rcases hH.2.2.2 E hE C hC with h | h | h
-      · exact absurd (h hyE) (Finset.disjoint_left.1 hBC hyB)
-      · exact h
-      · exact absurd hzC (Finset.disjoint_left.1 h hzE)
-    exact not_subset_of_ssubset hEA (hA ▸ union_subset hBE hCE)
-
-/-- Three pairwise disjoint clusters whose union is `A`, no two of which have a union in the
-hierarchy, are the children of `A`. -/
-theorem IsHierarchy.childClusters_eq_triple {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A B C D : Finset X} (hB : B ∈ H) (hC : C ∈ H) (hD : D ∈ H) (hBC : Disjoint B C)
-    (hBD : Disjoint B D) (hCD : Disjoint C D) (hA : B ∪ C ∪ D = A) (hBC' : B ∪ C ∉ H)
-    (hBD' : B ∪ D ∉ H) (hCD' : C ∪ D ∉ H) : childClusters H A = {B, C, D} := by
-  have hne : ∀ {P Q : Finset X}, P ∈ H → Disjoint P Q → P ≠ Q := by
-    intro P Q hP hPQ h
-    subst h
-    obtain ⟨y, hy⟩ := hH.2.2.1 P hP
-    exact Finset.disjoint_left.1 hPQ hy hy
-  have hBC0 := hne hB hBC
-  have hBD0 := hne hB hBD
-  have hCD0 := hne hC hCD
-  refine hH.childClusters_eq (by simp [insert_subset_iff, hB, hC, hD]) ?_ ?_ ?_ ?_
-  · intro P hP Q hQ hPQ
-    simp only [coe_insert, coe_singleton, Set.mem_insert_iff, Set.mem_singleton_iff] at hP hQ
-    rcases hP with rfl | rfl | rfl <;> rcases hQ with rfl | rfl | rfl
-    all_goals first
-      | exact absurd rfl hPQ
-      | exact hBC | exact hBC.symm | exact hBD | exact hBD.symm | exact hCD | exact hCD.symm
-  · simp [← hA, union_assoc]
-  · rw [card_insert_of_notMem (by simp [hBC0, hBD0]), card_pair hCD0]
-    omega
-  · intro E hE hEA
-    simp only [mem_insert, mem_singleton, exists_eq_or_imp, exists_eq_left]
-    by_contra hcon
-    rw [not_or, not_or] at hcon
-    have key : ∀ P ∈ H, ¬ E ⊆ P → P ⊆ E ∨ Disjoint E P := fun P hP h => by
-      rcases hH.2.2.2 E hE P hP with h' | h' | h'
-      · exact absurd h' h
-      · exact Or.inl h'
-      · exact Or.inr h'
-    have hEsub : ∀ x ∈ E, x ∈ B ∨ x ∈ C ∨ x ∈ D := fun x hx => by
-      have := hEA.subset hx
-      rw [← hA] at this
-      simpa [or_assoc] using this
-    obtain ⟨y, hy⟩ := hH.2.2.1 E hE
-    rcases key B hB hcon.1 with hB' | hB' <;> rcases key C hC hcon.2.1 with hC' | hC' <;>
-      rcases key D hD hcon.2.2 with hD' | hD'
-    · exact not_subset_of_ssubset hEA (hA ▸ union_subset (union_subset hB' hC') hD')
-    · refine hBC' ?_
-      have : E = B ∪ C := by
-        ext x
-        refine ⟨fun hx => ?_, fun hx => ?_⟩
-        · rcases hEsub x hx with h | h | h
-          · exact mem_union_left _ h
-          · exact mem_union_right _ h
-          · exact absurd h (Finset.disjoint_left.1 hD' hx)
-        · rcases mem_union.1 hx with h | h
-          · exact hB' h
-          · exact hC' h
-      exact this ▸ hE
-    · refine hBD' ?_
-      have : E = B ∪ D := by
-        ext x
-        refine ⟨fun hx => ?_, fun hx => ?_⟩
-        · rcases hEsub x hx with h | h | h
-          · exact mem_union_left _ h
-          · exact absurd h (Finset.disjoint_left.1 hC' hx)
-          · exact mem_union_right _ h
-        · rcases mem_union.1 hx with h | h
-          · exact hB' h
-          · exact hD' h
-      exact this ▸ hE
-    · refine hcon.1 fun x hx => ?_
-      rcases hEsub x hx with h | h | h
-      · exact h
-      · exact absurd h (Finset.disjoint_left.1 hC' hx)
-      · exact absurd h (Finset.disjoint_left.1 hD' hx)
-    · refine hCD' ?_
-      have : E = C ∪ D := by
-        ext x
-        refine ⟨fun hx => ?_, fun hx => ?_⟩
-        · rcases hEsub x hx with h | h | h
-          · exact absurd h (Finset.disjoint_left.1 hB' hx)
-          · exact mem_union_left _ h
-          · exact mem_union_right _ h
-        · rcases mem_union.1 hx with h | h
-          · exact hC' h
-          · exact hD' h
-      exact this ▸ hE
-    · refine hcon.2.1 fun x hx => ?_
-      rcases hEsub x hx with h | h | h
-      · exact absurd h (Finset.disjoint_left.1 hB' hx)
-      · exact h
-      · exact absurd h (Finset.disjoint_left.1 hD' hx)
-    · refine hcon.2.2 fun x hx => ?_
-      rcases hEsub x hx with h | h | h
-      · exact absurd h (Finset.disjoint_left.1 hB' hx)
-      · exact absurd h (Finset.disjoint_left.1 hC' hx)
-      · exact h
-    · rcases hEsub y hy with h | h | h
-      · exact Finset.disjoint_left.1 hB' hy h
-      · exact Finset.disjoint_left.1 hC' hy h
-      · exact Finset.disjoint_left.1 hD' hy h
-
-/-- A species tree is binary if and only if every cluster with at least two taxa has exactly two
-children. -/
-theorem SpeciesTree.isBinary_iff_card_childClusters (σ : SpeciesTree X) :
-    σ.IsBinary ↔ ∀ A ∈ σ.clusters, 2 ≤ #A → #(childClusters σ.clusters A) = 2 := by
-  constructor
-  · intro hb A hA hA2
-    obtain ⟨B, hB, C, hC, hBC, hBCA⟩ := hb A hA hA2
-    rw [σ.isHierarchy.childClusters_eq_pair hB hC hBC hBCA]
-    refine card_pair fun h => ?_
-    subst h
-    obtain ⟨y, hy⟩ := σ.nonempty_of_mem B hB
-    exact Finset.disjoint_left.1 hBC hy hy
-  · intro h A hA hA2
-    obtain ⟨B, C, hBC, hch⟩ := card_eq_two.1 (h A hA hA2)
-    have hB : B ∈ childClusters σ.clusters A := hch ▸ mem_insert_self _ _
-    have hC : C ∈ childClusters σ.clusters A := hch ▸ mem_insert_of_mem (mem_singleton_self _)
-    refine ⟨B, (mem_childClusters.1 hB).1, C, (mem_childClusters.1 hC).1,
-      σ.isHierarchy.disjoint_of_mem_childClusters hB hC hBC, ?_⟩
-    have := σ.isHierarchy.sup_childClusters hA2
-    rwa [hch, sup_insert, sup_singleton] at this
-
-/-- In a binary species tree, a cluster with at least two taxa has two children. -/
-theorem SpeciesTree.IsBinary.exists_childClusters_eq_pair {σ : SpeciesTree X} (hσ : σ.IsBinary)
-    {A : Finset X} (hA : A ∈ σ.clusters) (hA2 : 2 ≤ #A) :
-    ∃ B C, B ≠ C ∧ childClusters σ.clusters A = {B, C} :=
-  card_eq_two.1 ((σ.isBinary_iff_card_childClusters.1 hσ) A hA hA2)
 
 /-! ### Leaves -/
 

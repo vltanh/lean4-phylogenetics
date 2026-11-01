@@ -1,377 +1,322 @@
 module
 
-public import Phylogenetics.NMSC.Basic
+public import Phylogenetics.Coalescent.Relabel
+public import Phylogenetics.NMSC.Marginal
+
 /-!
-# Symmetric kernels and the score of a quartet
+# Symmetry of the network multispecies coalescent
 
-Once three or four of the lineages `0, 1, 2, 3` are together at a point of the network and have not
-coalesced, the rest of the process treats them alike, so that each of the three splits of the four
-lineages ends up in the unrooted gene tree with probability `1/3`; and once two of them have
-coalesced, the split is decided. `Phylogenetics.NiceKernel S Φ` packages what a kernel `Φ` on
-forests of the four lineages (the rest of the process, from some point on) needs for this: it adds
-the lineages `S` (from elsewhere in the network), is invariant under the relabellings that fix `S`,
-and sends good forests to probability distributions on good forests that contain them.
-`Phylogenetics.NiceKernel.score` then says that the expected score `Phylogenetics.quartetScore` is
-unchanged: `∑ G, Φ F G * quartetScore G = quartetScore F` for every good forest `F` of at least
-three lineages outside `S`.
+The process with injected forests is natural with respect to permutations of the lineages
+(`injDist_relabel`). When four lineages are injected, this decides the mass of the forests
+containing a cherry of a quartet tree (`cherryMass`) in two cases, as `Phylogenetics.NiceKernel.score`
+does in `Phylogenetics.NMSC.Level1.Symmetry`:
 
-Kingman's coalescent, the population above the root, the addition of an independent forest, and
-products of such kernels are nice (`Phylogenetics.niceKernel_kingmanTransition`,
-`Phylogenetics.niceKernel_kingmanAbsorption`, `Phylogenetics.niceKernel_unionKernel`,
-`Phylogenetics.NiceKernel.mul`).
+* once a cluster of two lineages is present, it stays, and it decides the split
+  (`cherryMass_of_mem`);
+* if the injected forests are fixed by the transpositions of all but one of the four lineages, then
+  the three quartet trees are equally likely (`cherryMass_eq_third`).
+
+## Main results
+
+* `injDist_relabel`, `cherryMass_relabel`: naturality.
+* `sum_cherryMass`: the three quartet trees have total mass one.
+* `cherryMass_of_mem`, `cherryMass_eq_third`.
 -/
 
 @[expose] public noncomputable section
 
+open Finset
+open scoped Classical
+
 namespace Phylogenetics
 
-open Finset Matrix
+namespace NMSC
 
-/-- A kernel on forests of the four lineages `0, 1, 2, 3` that adds the lineages `S`, treats the
-others symmetrically, and sends good forests to probability distributions on good forests that
-contain them. -/
-structure NiceKernel (S : Finset (Fin 4))
-    (Φ : Matrix (Finset (Finset (Fin 4))) (Finset (Finset (Fin 4))) ℝ) : Prop where
-  relabel : ∀ σ : Equiv.Perm (Fin 4), (∀ l ∈ S, σ l = l) → ∀ F G,
-    Φ (relabelFamily σ F) (relabelFamily σ G) = Φ F G
-  sum_eq_one : ∀ F, IsGood F → Disjoint (lineages F) S → ∑ G, Φ F G = 1
-  support : ∀ F, IsGood F → Disjoint (lineages F) S → ∀ G, Φ F G ≠ 0 →
-    IsGood G ∧ F ⊆ G ∧ lineages G = lineages F ∪ S
+variable {V E X : Type*} [Fintype V] [Fintype E] [Fintype X] [DecidableEq X]
+variable {N : RootedNetwork V E X} {θ : RootedNetwork.MetricData E} {ρ : ℝ}
 
-theorem niceKernel_one : NiceKernel ∅ 1 := by
-  refine ⟨fun σ _ F G => ?_, fun F _ _ => ?_, fun F hF _ G hG => ?_⟩
-  · simp only [Matrix.one_apply, (relabelFamily_injective σ).eq_iff]
-  · simp [Matrix.one_apply]
-  · obtain rfl : F = G := by
-      by_contra h
-      exact hG (Matrix.one_apply_ne h)
-    exact ⟨hF, subset_rfl, (union_empty _).symm⟩
+/-- The injected forests relabelled by a permutation of the lineages. -/
+def relabelInj (π : Equiv.Perm X) (inj : V → Finset (Finset X)) : V → Finset (Finset X) :=
+  fun v => relabelFamily π (inj v)
 
-theorem NiceKernel.mul {S₁ S₂ : Finset (Fin 4)}
-    {Φ₁ Φ₂ : Matrix (Finset (Finset (Fin 4))) (Finset (Finset (Fin 4))) ℝ}
-    (h₁ : NiceKernel S₁ Φ₁) (h₂ : NiceKernel S₂ Φ₂) (hS : Disjoint S₁ S₂) :
-    NiceKernel (S₁ ∪ S₂) (Φ₁ * Φ₂) := by
-  have hdisj : ∀ {F : Finset (Finset (Fin 4))}, Disjoint (lineages F) (S₁ ∪ S₂) →
-      Disjoint (lineages F) S₁ ∧ Disjoint (lineages F) S₂ :=
-    fun h => disjoint_union_right.1 h
-  -- after `Φ₁`, the lineages are those of `F` and `S₁`, still disjoint from `S₂`
-  have hmid : ∀ {F H : Finset (Finset (Fin 4))}, IsGood F → Disjoint (lineages F) (S₁ ∪ S₂) →
-      Φ₁ F H ≠ 0 → IsGood H ∧ F ⊆ H ∧ Disjoint (lineages H) S₂ ∧
-        lineages H = lineages F ∪ S₁ := by
-    intro F H hF hFS hH
-    obtain ⟨hHg, hFH, hHl⟩ := h₁.support F hF (hdisj hFS).1 H hH
-    exact ⟨hHg, hFH, by rw [hHl]; exact disjoint_union_left.2 ⟨(hdisj hFS).2, hS⟩, hHl⟩
-  refine ⟨fun σ hσ F G => ?_, fun F hF hFS => ?_, fun F hF hFS G hG => ?_⟩
-  · simp only [Matrix.mul_apply]
-    rw [← Equiv.sum_comp (relabelFamilyEquiv σ)]
-    refine Finset.sum_congr rfl fun H _ => ?_
-    rw [relabelFamilyEquiv_apply, h₁.relabel σ (fun l hl => hσ l (mem_union_left _ hl)),
-      h₂.relabel σ (fun l hl => hσ l (mem_union_right _ hl))]
-  · simp only [Matrix.mul_apply]
-    rw [Finset.sum_comm, ← h₁.sum_eq_one F hF (hdisj hFS).1]
-    refine Finset.sum_congr rfl fun H _ => ?_
-    rw [← Finset.mul_sum]
-    by_cases hH : Φ₁ F H = 0
-    · rw [hH, zero_mul]
-    · obtain ⟨hHg, -, hHS, -⟩ := hmid hF hFS hH
-      rw [h₂.sum_eq_one H hHg hHS, mul_one]
-  · rw [Matrix.mul_apply] at hG
-    obtain ⟨H, -, hH⟩ := Finset.exists_ne_zero_of_sum_ne_zero hG
-    obtain ⟨hHg, hFH, hHS, hHl⟩ := hmid hF hFS (left_ne_zero_of_mul hH)
-    obtain ⟨hGg, hHG, hGl⟩ := h₂.support H hHg hHS G (right_ne_zero_of_mul hH)
-    exact ⟨hGg, hFH.trans hHG, by rw [hGl, hHl, union_assoc]⟩
+/-- The forests of all arcs relabelled by a permutation of the lineages. -/
+abbrev relabelAll (π : Equiv.Perm X) (t : E → Finset (Finset X)) : E → Finset (Finset X) :=
+  fun f => relabelFamily π (t f)
 
-theorem niceKernel_kingmanTransition (t : ℝ) : NiceKernel ∅ (kingmanTransition t) := by
-  refine ⟨fun σ _ F G => kingmanTransition_relabel σ t F G,
-    fun F hF _ => kingmanTransition_row_sum hF.1 t, fun F hF _ G hG => ?_⟩
-  obtain ⟨hGg, hFG, hGl⟩ := kingmanTransition_support_isGood hF hG
-  exact ⟨hGg, hFG, by rw [hGl, union_empty]⟩
+omit [Fintype V] [Fintype X] in
+theorem arriving_relabel (π : Equiv.Perm X) (inj : V → Finset (Finset X))
+    (top : E → Finset (Finset X)) (v : V) :
+    arriving N (relabelInj π inj) (relabelAll π top) v =
+      relabelFamily π (arriving N inj top v) := by
+  unfold arriving relabelInj
+  rw [relabelFamily_union, relabelFamily_biUnion]
 
-theorem niceKernel_kingmanAbsorption : NiceKernel ∅ kingmanAbsorption := by
-  refine ⟨fun σ _ F G => kingmanAbsorption_relabel σ F G,
-    fun F hF _ => kingmanAbsorption_row_sum hF.1, fun F hF _ G hG => ?_⟩
-  obtain ⟨hGg, hFG, hGl, -⟩ := kingmanAbsorption_support hF hG
-  exact ⟨hGg, hFG, by rw [hGl, union_empty]⟩
+omit [Fintype V] in
+/-- The allocation is natural: the roots are relabelled along. -/
+theorem allocationFactor_relabel (π : Equiv.Perm X) (F : Finset (Finset X)) (v : V)
+    (b : E → Finset (Finset X)) :
+    allocationFactor N θ ρ (relabelFamily π F) v (relabelAll π b) =
+      allocationFactor N θ ρ F v b := by
+  let σ : {A // A ∈ roots F} ≃ {A // A ∈ roots (relabelFamily π F)} :=
+    (Equiv.finsetCongr π).subtypeEquiv fun A => by
+      rw [roots_relabelFamily, Equiv.finsetCongr_apply, map_mem_relabelFamily]
+  have hσ : ∀ r, (σ r).val = r.val.map π.toEmbedding := fun r => rfl
+  unfold allocationFactor
+  rw [← (Equiv.arrowCongr σ (Equiv.refl {e // N.graph.target e = v})).sum_comp]
+  refine sum_congr rfl fun a _ => ?_
+  have ha : ∀ r, Equiv.arrowCongr σ (Equiv.refl {e // N.graph.target e = v}) a (σ r) = a r := by
+    intro r
+    simp [Equiv.arrowCongr_apply]
+  have hR : ∀ e : {e // N.graph.target e = v},
+      (univ.filter fun r' =>
+          Equiv.arrowCongr σ (Equiv.refl {e // N.graph.target e = v}) a r' = e).image Subtype.val =
+        relabelFamily π ((univ.filter fun r => a r = e).image Subtype.val) := by
+    intro e
+    ext C
+    constructor
+    · intro hC
+      obtain ⟨r', hr', rfl⟩ := mem_image.1 hC
+      obtain ⟨r, rfl⟩ := σ.surjective r'
+      have hr := (mem_filter.1 hr').2
+      rw [ha] at hr
+      rw [hσ]
+      exact mem_image_of_mem _ (mem_image.2 ⟨r, mem_filter.2 ⟨mem_univ _, hr⟩, rfl⟩)
+    · intro hC
+      obtain ⟨_, hA, rfl⟩ := mem_image.1 hC
+      obtain ⟨r, hr, rfl⟩ := mem_image.1 hA
+      refine mem_image.2 ⟨σ r, mem_filter.2 ⟨mem_univ _, ?_⟩, hσ r⟩
+      rw [ha]
+      exact (mem_filter.1 hr).2
+  have hc : (∀ e : {e // N.graph.target e = v}, relabelAll π b e.val =
+        forestBelow (relabelFamily π F) ((univ.filter fun r' =>
+          Equiv.arrowCongr σ (Equiv.refl {e // N.graph.target e = v}) a r' = e).image
+            Subtype.val)) ↔
+      ∀ e : {e // N.graph.target e = v}, b e.val =
+        forestBelow F ((univ.filter fun r => a r = e).image Subtype.val) := by
+    refine forall_congr' fun e => ?_
+    rw [hR, forestBelow_relabelFamily]
+    exact (relabelFamily_injective π).eq_iff
+  simp only [hc]
+  have hw : allocationWeight ρ (fun e : {e // N.graph.target e = v} => θ.inheritance e.val)
+        (Equiv.arrowCongr σ (Equiv.refl {e // N.graph.target e = v}) a) =
+      allocationWeight ρ (fun e : {e // N.graph.target e = v} => θ.inheritance e.val) a :=
+    allocationWeight_comp σ.symm a
+  simp only [hw]
 
-/-- Adding an independent random forest on the lineages `S`. -/
-theorem niceKernel_unionKernel {S : Finset (Fin 4)} {ν : Finset (Finset (Fin 4)) → ℝ}
-    (hsum : ∑ E, ν E = 1) (hsupp : ∀ E, ν E ≠ 0 → IsGood E ∧ lineages E = S) :
-    NiceKernel S (unionKernel ν) := by
-  refine ⟨fun σ hσ F G => ?_, fun F _ _ => ?_, fun F hF hFS G hG => ?_⟩
-  · unfold unionKernel
-    refine Finset.sum_congr rfl fun E _ => ?_
-    by_cases hE : ν E = 0
-    · simp only [hE, ite_self]
-    · -- `σ` fixes the added forest
-      have hσE : relabelFamily σ E = E :=
-        relabel_eq_self fun l hl => hσ l (by rwa [(hsupp E hE).2] at hl)
-      have hFE : relabelFamily σ F ∪ E = relabelFamily σ (F ∪ E) := by
-        rw [relabel_union, hσE]
-      simp only [hFE, (relabelFamily_injective σ).eq_iff]
-  · unfold unionKernel
-    rw [Finset.sum_comm]
-    simp only [Finset.sum_ite_eq, Finset.mem_univ, ite_true]
-    exact hsum
-  · unfold unionKernel at hG
-    obtain ⟨E, -, hE⟩ := Finset.exists_ne_zero_of_sum_ne_zero hG
-    by_cases hFE : F ∪ E = G
-    · rw [ite_eq_left hFE] at hE
-      obtain ⟨hEg, hEl⟩ := hsupp E hE
-      subst hFE
-      exact ⟨hF.union hEg (by rw [hEl]; exact hFS), subset_union_left,
-        by rw [lineages_union, hEl]⟩
-    · rw [ite_eq_right hFE] at hE
-      exact absurd rfl hE
+omit [Fintype V] in
+theorem vertexWeight_relabel (π : Equiv.Perm X) (inj : V → Finset (Finset X)) (v : V)
+    (bot top : E → Finset (Finset X)) :
+    vertexWeight N θ ρ (relabelInj π inj) v (relabelAll π bot) (relabelAll π top) =
+      vertexWeight N θ ρ inj v bot top := by
+  unfold vertexWeight
+  rw [arriving_relabel, allocationFactor_relabel]
+  congr 1
+  exact prod_congr rfl fun f _ => kingmanTransition_relabelFamily π _ _ _
 
-/-! ### The scores of the three splits -/
+/-- The forests of all arcs relabelled, as an equivalence. -/
+def relabelAllEquiv (π : Equiv.Perm X) :
+    (E → Finset (Finset X)) ≃ (E → Finset (Finset X)) :=
+  Equiv.arrowCongr (Equiv.refl E) (relabelFamilyEquiv π)
 
-/-- The score of the split `A | Aᶜ` of the four lineages, as `Phylogenetics.quartetScore` for the
-split `{0, 1} | {2, 3}`. -/
-private def ns_splitScore (A : Finset (Fin 4)) (G : Finset (Finset (Fin 4))) : ℝ :=
-  if A ∈ G ∨ Aᶜ ∈ G then 1 else if ∃ C ∈ G, #C = 2 then 0 else 1 / 3
+omit [Fintype E] [Fintype X] in
+theorem relabelAllEquiv_apply (π : Equiv.Perm X) (t : E → Finset (Finset X)) :
+    relabelAllEquiv π t = relabelAll π t := rfl
 
-private lemma ns_quartetScore_eq (G : Finset (Finset (Fin 4))) :
-    quartetScore G = ns_splitScore {0, 1} G := by
-  have h : ({0, 1} : Finset (Fin 4))ᶜ = {2, 3} := by decide
-  unfold quartetScore ns_splitScore
-  rw [h]
+/-- **Naturality of the process with injected forests** under permutations of the lineages. -/
+theorem injDist_relabel (π : Equiv.Perm X) (inj : V → Finset (Finset X)) (G : Finset (Finset X)) :
+    injDist N θ ρ (relabelInj π inj) (relabelFamily π G) = injDist N θ ρ inj G := by
+  unfold injDist injWeight
+  rw [← (relabelAllEquiv (E := E) π).sum_comp]
+  refine sum_congr rfl fun bot _ => ?_
+  rw [← (relabelAllEquiv (E := E) π).sum_comp]
+  refine sum_congr rfl fun top _ => ?_
+  simp only [relabelAllEquiv_apply, vertexWeight_relabel, arriving_relabel,
+    kingmanAbsorption_relabelFamily]
 
-private lemma ns_splitScore_compl (A : Finset (Fin 4)) (G : Finset (Finset (Fin 4))) :
-    ns_splitScore Aᶜ G = ns_splitScore A G := by
-  unfold ns_splitScore
-  simp only [compl_compl, or_comm]
+/-! ### Quartet trees -/
 
-private lemma ns_map_compl (σ : Equiv.Perm (Fin 4)) (A : Finset (Fin 4)) :
-    Aᶜ.map σ.toEmbedding = (A.map σ.toEmbedding)ᶜ := by
+/-- The quartet tree relabelled by a permutation of the taxa. -/
+def relabelQuartet (π : Equiv.Perm X) (r : QuartetTree X) : QuartetTree X :=
+  ⟨relabelFamily π r.val, by
+    refine ⟨by rw [card_relabelFamily]; exact r.property.1, fun B hB => ?_, fun B hB C hC hBC => ?_⟩
+    · obtain ⟨A, hA, rfl⟩ := mem_image.1 hB
+      rw [card_map]
+      exact r.property.2.1 A hA
+    · obtain ⟨A, hA, rfl⟩ := mem_image.1 hB
+      obtain ⟨D, hD, rfl⟩ := mem_image.1 hC
+      exact (disjoint_map _).2 (r.property.2.2 A hA D hD fun h => hBC (h ▸ rfl))⟩
+
+omit [Fintype X] in
+theorem taxa_relabelQuartet [Fintype X] (π : Equiv.Perm X) (r : QuartetTree X) :
+    (relabelQuartet π r).taxa = r.taxa.map π.toEmbedding := by
   ext x
-  simp [Finset.mem_map_equiv]
+  simp only [QuartetTree.taxa, relabelQuartet, relabelFamily, mem_sup, mem_image, id, mem_map]
+  constructor
+  · rintro ⟨_, ⟨A, hA, rfl⟩, hx⟩
+    obtain ⟨y, hy, rfl⟩ := mem_map.1 hx
+    exact ⟨y, ⟨A, hA, hy⟩, rfl⟩
+  · rintro ⟨y, ⟨A, hA, hy⟩, rfl⟩
+    exact ⟨_, ⟨A, hA, rfl⟩, mem_map_of_mem _ hy⟩
 
-/-- Relabelling the forest by `σ` relabels the split by `σ⁻¹`. -/
-private lemma ns_splitScore_relabel (σ : Equiv.Perm (Fin 4)) (A : Finset (Fin 4))
-    (G : Finset (Finset (Fin 4))) :
-    ns_splitScore A (relabelFamily σ G) = ns_splitScore (A.map σ.symm.toEmbedding) G := by
-  have h2 : (∃ C ∈ relabelFamily σ G, #C = 2) ↔ ∃ C ∈ G, #C = 2 := by
-    constructor
-    · rintro ⟨C, hC, h⟩
-      exact ⟨C.map σ.symm.toEmbedding, mem_relabelFamily.1 hC, by rw [card_map, h]⟩
-    · rintro ⟨C, hC, h⟩
-      exact ⟨C.map σ.toEmbedding, map_mem_relabelFamily.2 hC, by rw [card_map, h]⟩
-  unfold ns_splitScore
-  simp only [h2]
-  simp only [mem_relabelFamily, ns_map_compl]
+omit [Fintype X] in
+private theorem cherry_relabel [Fintype X] (π : Equiv.Perm X) (r : QuartetTree X)
+    (H : Finset (Finset X)) :
+    (∃ B ∈ (relabelQuartet π r).val, B ∈ relabelFamily π H) ↔ ∃ B ∈ r.val, B ∈ H := by
+  constructor
+  · rintro ⟨B, hB, hBH⟩
+    obtain ⟨A, hA, rfl⟩ := mem_image.1 hB
+    exact ⟨A, hA, map_mem_relabelFamily.1 hBH⟩
+  · rintro ⟨A, hA, hAH⟩
+    exact ⟨A.map π.toEmbedding, mem_image_of_mem _ hA, map_mem_relabelFamily.2 hAH⟩
 
-/-- Two clusters of two of the four lineages that are nested or disjoint are equal or
-complementary. -/
-private lemma ns_laminar_two : ∀ A C : Finset (Fin 4), #A = 2 → #C = 2 →
-    (A ⊆ C ∨ C ⊆ A ∨ Disjoint A C) → A = C ∨ A = Cᶜ := by
-  decide
+/-- Naturality of the mass of a quartet tree. -/
+theorem cherryMass_relabel (π : Equiv.Perm X) (inj : V → Finset (Finset X)) (r : QuartetTree X) :
+    cherryMass N θ ρ (relabelInj π inj) (relabelQuartet π r) = cherryMass N θ ρ inj r := by
+  unfold cherryMass
+  rw [← (relabelFamilyEquiv π).sum_comp]
+  refine sum_congr rfl fun H _ => ?_
+  simp only [relabelFamilyEquiv_apply, cherry_relabel, injDist_relabel]
 
-/-- A cluster of two of the four lineages is a side of exactly one of the three splits. -/
-private lemma ns_two_cases : ∀ C : Finset (Fin 4), #C = 2 →
-    (if ({0, 1} : Finset (Fin 4)) = C ∨ {0, 1} = Cᶜ then 1 else 0) +
-      (if ({0, 2} : Finset (Fin 4)) = C ∨ {0, 2} = Cᶜ then 1 else 0) +
-      (if ({0, 3} : Finset (Fin 4)) = C ∨ {0, 3} = Cᶜ then 1 else 0) = (1 : ℕ) := by
-  decide
+/-! ### Clusters of two lineages -/
 
-private lemma ns_card_compl_two {A : Finset (Fin 4)} (hA : #A = 2) : #Aᶜ = 2 := by
-  rw [card_compl, hA, Fintype.card_fin]
+omit [Fintype X] in
+/-- A cluster of two lineages of a forest on the taxa of a quartet tree: if the forest contains a
+cherry of the quartet tree, the cluster is a cherry. -/
+theorem mem_val_of_cherry [Fintype X] {H : Finset (Finset X)} (hH : IsForest H) {C : Finset X}
+    (hC : C ∈ H) (hC2 : #C = 2) {r : QuartetTree X} (hCr : C ⊆ r.taxa) {B : Finset X}
+    (hB : B ∈ r.val) (hBH : B ∈ H) : C ∈ r.val := by
+  have hB2 := r.card_of_mem hB
+  rcases hH.2 C hC B hBH with h | h | h
+  · rwa [eq_of_subset_of_card_le h (by omega)]
+  · rwa [(eq_of_subset_of_card_le h (by omega)).symm]
+  · have hsub : C ⊆ r.taxa \ B := fun x hx =>
+      mem_sdiff.2 ⟨hCr hx, disjoint_left.1 h hx⟩
+    have hcard : #(r.taxa \ B) = 2 := by
+      rw [card_sdiff_of_subset (r.subset_taxa hB), r.card_taxa, hB2]
+    rw [eq_of_subset_of_card_le hsub (by omega)]
+    exact r.sdiff_mem hB
 
-/-- In a forest with a cluster `C` of two lineages, the score of a split is `1` if `C` is one of
-its sides and `0` otherwise. -/
-private lemma ns_splitScore_of_two {G : Finset (Finset (Fin 4))} (hG : IsForest G)
-    {C : Finset (Fin 4)} (hC : C ∈ G) (hC2 : #C = 2) {A : Finset (Fin 4)} (hA2 : #A = 2) :
-    ns_splitScore A G = if A = C ∨ A = Cᶜ then 1 else 0 := by
-  have key : A ∈ G ∨ Aᶜ ∈ G ↔ A = C ∨ A = Cᶜ := by
-    constructor
-    · rintro (h | h)
-      · exact ns_laminar_two A C hA2 hC2 (hG.2 A h C hC)
-      · rcases ns_laminar_two Aᶜ C (ns_card_compl_two hA2) hC2 (hG.2 _ h C hC) with h' | h'
-        · exact Or.inr (by rw [← h', compl_compl])
-        · exact Or.inl (compl_injective h')
-    · rintro (rfl | rfl)
-      · exact Or.inl hC
-      · exact Or.inr (by rwa [compl_compl])
-  unfold ns_splitScore
-  by_cases h : A = C ∨ A = Cᶜ
-  · rw [ite_eq_left (key.2 h), ite_eq_left h]
-  · rw [ite_eq_right (mt key.1 h), ite_eq_right h, ite_eq_left ⟨C, hC, hC2⟩]
+/-- A cluster of two lineages, injected, decides the mass of the quartet trees. -/
+theorem cherryMass_of_mem (hN : N.IsPhylogenetic) (hθ : N.IsMetric θ) (hρ : 0 ≤ ρ ∧ ρ ≤ 1)
+    {inj : V → Finset (Finset X)} (hinj : ValidInj inj) {v : V} {C : Finset X} (hC : C ∈ inj v)
+    (hC2 : #C = 2) {r : QuartetTree X} (hCr : C ⊆ r.taxa) :
+    cherryMass N θ ρ inj r = if C ∈ r.val then 1 else 0 := by
+  unfold cherryMass
+  split_ifs with hm
+  · rw [← sum_injDist (θ := θ) (ρ := ρ) hN hθ hρ hinj]
+    refine sum_congr rfl fun H _ => ?_
+    by_cases hd : injDist N θ ρ inj H = 0
+    · simp [hd]
+    · obtain ⟨-, hsub, -⟩ := injDist_support hN hinj hd
+      rw [ite_eq_left ⟨C, hm, hsub v hC⟩]
+  · refine sum_eq_zero fun H _ => ?_
+    by_cases hd : injDist N θ ρ inj H = 0
+    · simp [hd]
+    · obtain ⟨hgood, hsub, -⟩ := injDist_support hN hinj hd
+      refine ite_eq_right fun ⟨B, hB, hBH⟩ => ?_
+      exact absurd (mem_val_of_cherry hgood.1 (hsub v hC) hC2 hCr hB hBH) hm
 
-/-- On a forest, the scores of the three splits sum to `1`. -/
-private lemma ns_splitScore_sum {G : Finset (Finset (Fin 4))} (hG : IsForest G) :
-    ns_splitScore {0, 1} G + ns_splitScore {0, 2} G + ns_splitScore {0, 3} G = 1 := by
-  by_cases h : ∃ C ∈ G, #C = 2
-  · obtain ⟨C, hC, hC2⟩ := h
-    rw [ns_splitScore_of_two hG hC hC2 (by decide), ns_splitScore_of_two hG hC hC2 (by decide),
-      ns_splitScore_of_two hG hC hC2 (by decide)]
-    have := congrArg (Nat.cast : ℕ → ℝ) (ns_two_cases C hC2)
-    push_cast at this
-    exact this
-  · have hs : ∀ A : Finset (Fin 4), #A = 2 → ns_splitScore A G = 1 / 3 := by
-      intro A hA
-      have hA' : ¬(A ∈ G ∨ Aᶜ ∈ G) := by
-        rintro (h' | h')
-        · exact h ⟨_, h', hA⟩
-        · exact h ⟨_, h', ns_card_compl_two hA⟩
-      unfold ns_splitScore
-      rw [ite_eq_right hA', ite_eq_right h]
-    rw [hs _ (by decide), hs _ (by decide), hs _ (by decide)]
-    norm_num
-
-/-! ### Forests without a cluster of two lineages -/
-
-/-- In a good forest, a cluster of at least two lineages contains a cluster of two lineages. -/
-private lemma ns_exists_two {L : Type*} [Fintype L] [DecidableEq L] {F : Finset (Finset L)}
-    (hF : IsGood F) : ∀ n, ∀ A ∈ F, #A = n → 2 ≤ n → ∃ C ∈ F, #C = 2 := by
-  intro n
-  induction n using Nat.strong_induction_on with
-  | _ n ih =>
-    intro A hA hAn h2
-    obtain ⟨B, hB, C, hC, hBC, hBCA⟩ := hF.2 A hA (hAn ▸ h2)
-    have hB0 := (hF.1.1 B hB).card_pos
-    have hC0 := (hF.1.1 C hC).card_pos
-    have hcard : #B + #C = n := by rw [← card_union_of_disjoint hBC, hBCA, hAn]
-    by_cases hB2 : 2 ≤ #B
-    · exact ih #B (by omega) B hB rfl hB2
-    by_cases hC2 : 2 ≤ #C
-    · exact ih #C (by omega) C hC rfl hC2
-    exact ⟨A, hA, by omega⟩
-
-/-- A forest whose clusters are singletons is fixed by the transposition of two of its
-lineages. -/
-private lemma ns_relabel_swap {F : Finset (Finset (Fin 4))} (h1 : ∀ A ∈ F, #A = 1) {i j : Fin 4}
-    (hi : i ∈ lineages F) (hj : j ∈ lineages F) :
-    relabelFamily (Equiv.swap i j) F = F := by
-  have hmem : ∀ l ∈ lineages F, {l} ∈ F := by
-    intro l hl
-    obtain ⟨A, hA, hlA⟩ := mem_lineages.1 hl
-    obtain ⟨a, rfl⟩ := card_eq_one.1 (h1 A hA)
-    rw [mem_singleton] at hlA
-    rwa [hlA]
-  have key : ∀ A ∈ F, A.map (Equiv.swap i j).toEmbedding ∈ F := by
-    intro A hA
-    obtain ⟨a, rfl⟩ := card_eq_one.1 (h1 A hA)
-    have ha : a ∈ lineages F := mem_lineages.2 ⟨{a}, hA, mem_singleton_self a⟩
-    rw [map_singleton, Equiv.toEmbedding_apply]
-    apply hmem
-    rcases eq_or_ne a i with rfl | hai
-    · rwa [Equiv.swap_apply_left]
-    rcases eq_or_ne a j with rfl | haj
-    · rwa [Equiv.swap_apply_right]
-    rwa [Equiv.swap_apply_of_ne_of_ne hai haj]
-  have hinv : ∀ B : Finset (Fin 4),
-      (B.map (Equiv.swap i j).toEmbedding).map (Equiv.swap i j).toEmbedding = B := by
-    intro B
+/-- The three quartet trees on the four injected lineages have total mass one. -/
+theorem sum_cherryMass (hN : N.IsPhylogenetic) (hθ : N.IsMetric θ) (hρ : 0 ≤ ρ ∧ ρ ≤ 1)
+    {inj : V → Finset (Finset X)} (hinj : ValidInj inj) {Y : Finset X} (hY : #Y = 4)
+    (hlin : ∀ x, (∃ u, x ∈ lineages (inj u)) ↔ x ∈ Y) :
+    ∑ r ∈ treesOn Y, cherryMass N θ ρ inj r = 1 := by
+  unfold cherryMass
+  rw [sum_comm, ← sum_injDist (θ := θ) (ρ := ρ) hN hθ hρ hinj]
+  refine sum_congr rfl fun H _ => ?_
+  by_cases hd : injDist N θ ρ inj H = 0
+  · simp [hd]
+  obtain ⟨hgood, -, hl, hone⟩ := injDist_support hN hinj hd
+  obtain ⟨x₀, hx₀⟩ : Y.Nonempty := card_pos.1 (by omega)
+  obtain ⟨u₀, hu₀⟩ := (hlin x₀).2 hx₀
+  obtain ⟨A₀, hA₀, -⟩ := mem_lineages.1 hu₀
+  have hone' := hone ⟨u₀, A₀, hA₀⟩
+  have hYH : lineages H = Y := by
     ext x
-    simp [Finset.mem_map_equiv]
-  ext B
-  rw [mem_relabelFamily, Equiv.symm_swap]
-  constructor
-  · intro hB
-    rw [← hinv B]
-    exact key _ hB
-  · exact key B
+    rw [hl, hlin]
+  have hYm : Y ∈ H := by
+    have := lineages_mem_of_card_roots_eq_one hone'
+    rwa [hYH] at this
+  obtain ⟨C, hC, hCY, hC2⟩ := hgood.exists_two Y hYm (by omega)
+  let r₀ := quartetOfCherry Y C hY hCY hC2
+  have hr₀t : r₀.taxa = Y := quartetOfCherry_taxa Y C hY hCY hC2
+  have hCr₀ : C ∈ r₀.val := by simp [r₀]
+  rw [sum_eq_single r₀]
+  · rw [ite_eq_left ⟨C, hCr₀, hC⟩]
+  · intro r hr hne
+    refine ite_eq_right fun ⟨B, hB, hBH⟩ => ?_
+    have hrt : r.taxa = Y := mem_treesOn.1 hr
+    have hCr : C ∈ r.val :=
+      mem_val_of_cherry hgood.1 hC hC2 (by rw [hrt]; exact hCY) hB hBH
+    exact hne (QuartetTree.eq_of_taxa_eq_of_mem (hrt.trans hr₀t.symm) hCr hCr₀)
+  · exact fun h => absurd (mem_treesOn.2 hr₀t) h
 
-/-- A set of at least three of the four lineages contains `1` and `2`, or `0` and `3`. -/
-private lemma ns_three_a : ∀ T : Finset (Fin 4), 3 ≤ #T → (1 ∈ T ∧ 2 ∈ T) ∨ (0 ∈ T ∧ 3 ∈ T) := by
-  decide
+omit [Fintype X] in
+/-- Each taxon of a quartet tree lies in a cherry. -/
+theorem exists_cherry_mem [Fintype X] (r : QuartetTree X) {a : X} (ha : a ∈ r.taxa) :
+    ∃ B ∈ r.val, a ∈ B := by
+  simpa [QuartetTree.taxa, mem_sup] using ha
 
-/-- A set of at least three of the four lineages contains `1` and `3`, or `0` and `2`. -/
-private lemma ns_three_b : ∀ T : Finset (Fin 4), 3 ≤ #T → (1 ∈ T ∧ 3 ∈ T) ∨ (0 ∈ T ∧ 2 ∈ T) := by
-  decide
+/-- **The three quartet trees are equally likely** when the injected forests are fixed by the
+transpositions of all but one of the four lineages. -/
+theorem cherryMass_eq_third (hN : N.IsPhylogenetic) (hθ : N.IsMetric θ) (hρ : 0 ≤ ρ ∧ ρ ≤ 1)
+    {inj : V → Finset (Finset X)} (hinj : ValidInj inj) {Y : Finset X} (hY : #Y = 4)
+    (hlin : ∀ x, (∃ u, x ∈ lineages (inj u)) ↔ x ∈ Y) {a : X} (ha : a ∈ Y)
+    (hsym : ∀ x ∈ Y, ∀ y ∈ Y, x ≠ a → y ≠ a → relabelInj (Equiv.swap x y) inj = inj)
+    {r : QuartetTree X} (hr : r ∈ treesOn Y) : cherryMass N θ ρ inj r = 1 / 3 := by
+  have heq : ∀ r₁ ∈ treesOn Y, ∀ r₂ ∈ treesOn Y,
+      cherryMass N θ ρ inj r₁ = cherryMass N θ ρ inj r₂ := by
+    intro r₁ h₁ r₂ h₂
+    have ht₁ := mem_treesOn.1 h₁
+    have ht₂ := mem_treesOn.1 h₂
+    obtain ⟨B₁, hB₁, haB₁⟩ := exists_cherry_mem r₁ (ht₁ ▸ ha)
+    obtain ⟨B₂, hB₂, haB₂⟩ := exists_cherry_mem r₂ (ht₂ ▸ ha)
+    obtain ⟨x₁, hx₁⟩ : ∃ x₁, B₁ = {a, x₁} ∧ x₁ ≠ a := by
+      obtain ⟨u, v, huv, hB⟩ := card_eq_two.1 (r₁.card_of_mem hB₁)
+      rw [hB, mem_insert, mem_singleton] at haB₁
+      rcases haB₁ with rfl | rfl
+      · exact ⟨v, hB, huv.symm⟩
+      · exact ⟨u, by rw [hB, pair_comm], huv⟩
+    obtain ⟨x₂, hx₂⟩ : ∃ x₂, B₂ = {a, x₂} ∧ x₂ ≠ a := by
+      obtain ⟨u, v, huv, hB⟩ := card_eq_two.1 (r₂.card_of_mem hB₂)
+      rw [hB, mem_insert, mem_singleton] at haB₂
+      rcases haB₂ with rfl | rfl
+      · exact ⟨v, hB, huv.symm⟩
+      · exact ⟨u, by rw [hB, pair_comm], huv⟩
+    obtain ⟨hBe₁, hxa₁⟩ := hx₁
+    obtain ⟨hBe₂, hxa₂⟩ := hx₂
+    have hxY₁ : x₁ ∈ Y := ht₁ ▸ r₁.subset_taxa hB₁ (by simp [hBe₁])
+    have hxY₂ : x₂ ∈ Y := ht₂ ▸ r₂.subset_taxa hB₂ (by simp [hBe₂])
+    by_cases hx : x₁ = x₂
+    · have : r₁ = r₂ := QuartetTree.eq_of_taxa_eq_of_mem (ht₁.trans ht₂.symm) hB₁
+        (by rw [hBe₁, hx, ← hBe₂]; exact hB₂)
+      rw [this]
+    · have hsw : relabelQuartet (Equiv.swap x₁ x₂) r₁ = r₂ := by
+        refine QuartetTree.eq_of_taxa_eq_of_mem ?_ (B := B₂) ?_ hB₂
+        · rw [taxa_relabelQuartet, ht₁, ht₂]
+          ext z
+          simp only [mem_map_equiv, Equiv.symm_swap]
+          by_cases hz1 : z = x₁
+          · subst hz1
+            simp [hxY₁, hxY₂]
+          by_cases hz2 : z = x₂
+          · subst hz2
+            simp [hxY₁, hxY₂]
+          rw [Equiv.swap_apply_of_ne_of_ne hz1 hz2]
+        · have : B₂ = B₁.map (Equiv.swap x₁ x₂).toEmbedding := by
+            rw [hBe₁, hBe₂, map_insert, map_singleton]
+            simp [Equiv.swap_apply_of_ne_of_ne hxa₁.symm hxa₂.symm]
+          rw [this]
+          exact mem_image_of_mem _ hB₁
+      have := cherryMass_relabel (N := N) (θ := θ) (ρ := ρ) (Equiv.swap x₁ x₂) inj r₁
+      rw [hsw, hsym x₁ hxY₁ x₂ hxY₂ hxa₁ hxa₂] at this
+      exact this.symm
+  have hsum := sum_cherryMass (θ := θ) (ρ := ρ) hN hθ hρ hinj hY hlin
+  rw [sum_congr rfl fun r' hr' => heq r' hr' r hr, sum_const, card_treesOn hY] at hsum
+  simp only [nsmul_eq_mul] at hsum
+  push_cast at hsum
+  linarith
 
-/-- The transpositions of the lineages of a set `T` of at least three of the four lineages connect
-the three splits: a function of the sides of the splits that is invariant under them and under
-complement takes the same value on the three splits. -/
-private lemma ns_chain (E : Finset (Fin 4) → ℝ) {T : Finset (Fin 4)} (hT : 3 ≤ #T)
-    (hE : ∀ i ∈ T, ∀ j ∈ T, ∀ A, E (A.map (Equiv.swap i j).toEmbedding) = E A)
-    (hc : ∀ A, E Aᶜ = E A) : E {0, 2} = E {0, 1} ∧ E {0, 3} = E {0, 1} := by
-  constructor
-  · rcases ns_three_a T hT with ⟨h1, h2⟩ | ⟨h0, h3⟩
-    · have := hE 1 h1 2 h2 {0, 1}
-      rwa [show ({0, 1} : Finset (Fin 4)).map (Equiv.swap 1 2).toEmbedding = {0, 2} by decide]
-        at this
-    · have := hE 0 h0 3 h3 {0, 1}
-      rwa [show ({0, 1} : Finset (Fin 4)).map (Equiv.swap 0 3).toEmbedding = {0, 2}ᶜ by decide,
-        hc] at this
-  · rcases ns_three_b T hT with ⟨h1, h3⟩ | ⟨h0, h2⟩
-    · have := hE 1 h1 3 h3 {0, 1}
-      rwa [show ({0, 1} : Finset (Fin 4)).map (Equiv.swap 1 3).toEmbedding = {0, 3} by decide]
-        at this
-    · have := hE 0 h0 2 h2 {0, 1}
-      rwa [show ({0, 1} : Finset (Fin 4)).map (Equiv.swap 0 2).toEmbedding = {0, 3}ᶜ by decide,
-        hc] at this
-
-/-- The expected score of a split after a nice kernel is invariant under the relabellings that fix
-the added lineages and the starting forest. -/
-private lemma ns_expect_relabel {S : Finset (Fin 4)}
-    {Φ : Matrix (Finset (Finset (Fin 4))) (Finset (Finset (Fin 4))) ℝ} (hΦ : NiceKernel S Φ)
-    {F : Finset (Finset (Fin 4))} (σ : Equiv.Perm (Fin 4)) (hσS : ∀ l ∈ S, σ l = l)
-    (hσF : relabelFamily σ F = F) (A : Finset (Fin 4)) :
-    ∑ G, Φ F G * ns_splitScore (A.map σ.symm.toEmbedding) G =
-      ∑ G, Φ F G * ns_splitScore A G := by
-  rw [← Equiv.sum_comp (relabelFamilyEquiv σ) (fun G => Φ F G * ns_splitScore A G)]
-  refine Finset.sum_congr rfl fun G _ => ?_
-  have h := hΦ.relabel σ hσS F G
-  rw [hσF] at h
-  simp only [relabelFamilyEquiv_apply]
-  rw [ns_splitScore_relabel, h]
-
-/-- **The score is invariant.** For a nice kernel `Φ` and a good forest `F` of at least three
-lineages, none added by `Φ`, the expected score after `Φ` is the score of `F`: if `F` has a cluster
-of two lineages, it stays (and decides the split); if not, the three splits are equally likely by
-symmetry. -/
-theorem NiceKernel.score {S : Finset (Fin 4)}
-    {Φ : Matrix (Finset (Finset (Fin 4))) (Finset (Finset (Fin 4))) ℝ} (hΦ : NiceKernel S Φ)
-    {F : Finset (Finset (Fin 4))} (hF : IsGood F) (hFS : Disjoint (lineages F) S)
-    (h3 : 3 ≤ #(lineages F)) :
-    ∑ G, Φ F G * quartetScore G = quartetScore F := by
-  by_cases h2 : ∃ C ∈ F, #C = 2
-  · -- a cluster of two lineages stays, and decides the split
-    obtain ⟨C, hC, hC2⟩ := h2
-    have hval : ∀ G, IsGood G → F ⊆ G → quartetScore G = quartetScore F := by
-      intro G hG hFG
-      rw [ns_quartetScore_eq, ns_quartetScore_eq, ns_splitScore_of_two hG.1 (hFG hC) hC2
-        (by decide), ns_splitScore_of_two hF.1 hC hC2 (by decide)]
-    calc ∑ G, Φ F G * quartetScore G = ∑ G, Φ F G * quartetScore F := by
-          refine Finset.sum_congr rfl fun G _ => ?_
-          by_cases hG : Φ F G = 0
-          · rw [hG, zero_mul, zero_mul]
-          · obtain ⟨hGg, hFG, -⟩ := hΦ.support F hF hFS G hG
-            rw [hval G hGg hFG]
-      _ = quartetScore F := by rw [← Finset.sum_mul, hΦ.sum_eq_one F hF hFS, one_mul]
-  · -- the clusters of `F` are singletons, and the three splits are equally likely
-    have h1 : ∀ A ∈ F, #A = 1 := by
-      intro A hA
-      have hpos := (hF.1.1 A hA).card_pos
-      by_contra hne
-      exact h2 (ns_exists_two hF #A A hA rfl (by omega))
-    have hF3 : quartetScore F = 1 / 3 := by
-      have h0123 : ¬(({0, 1} : Finset (Fin 4)) ∈ F ∨ ({2, 3} : Finset (Fin 4)) ∈ F) := by
-        rintro (h | h)
-        · exact h2 ⟨_, h, by decide⟩
-        · exact h2 ⟨_, h, by decide⟩
-      unfold quartetScore
-      rw [ite_eq_right h0123, ite_eq_right h2]
-    set E : Finset (Fin 4) → ℝ := fun A => ∑ G, Φ F G * ns_splitScore A G with hEdef
-    have hE : ∀ i ∈ lineages F, ∀ j ∈ lineages F, ∀ A,
-        E (A.map (Equiv.swap i j).toEmbedding) = E A := by
-      intro i hi j hj A
-      have hσS : ∀ l ∈ S, Equiv.swap i j l = l := fun l hl =>
-        Equiv.swap_apply_of_ne_of_ne (fun h => disjoint_left.1 hFS (h ▸ hi) hl)
-          (fun h => disjoint_left.1 hFS (h ▸ hj) hl)
-      have := ns_expect_relabel hΦ (Equiv.swap i j) hσS (ns_relabel_swap h1 hi hj) A
-      rwa [Equiv.symm_swap] at this
-    have hc : ∀ A, E Aᶜ = E A := fun A => by simp only [hEdef, ns_splitScore_compl]
-    obtain ⟨h02, h03⟩ := ns_chain E h3 hE hc
-    have hsum : E {0, 1} + E {0, 2} + E {0, 3} = 1 := by
-      simp only [hEdef, ← Finset.sum_add_distrib, ← mul_add]
-      rw [← hΦ.sum_eq_one F hF hFS]
-      refine Finset.sum_congr rfl fun G _ => ?_
-      by_cases hG : Φ F G = 0
-      · rw [hG, zero_mul]
-      · rw [ns_splitScore_sum (hΦ.support F hF hFS G hG).1.1, mul_one]
-    have h01 : E {0, 1} = 1 / 3 := by linarith
-    rw [hF3, ← h01]
-    simp only [hEdef, ns_quartetScore_eq]
+end NMSC
 
 end Phylogenetics

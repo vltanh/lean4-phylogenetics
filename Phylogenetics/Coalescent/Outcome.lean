@@ -1,6 +1,7 @@
 module
 
 public import Phylogenetics.Coalescent.Absorption
+public import Phylogenetics.Hierarchy.Basic
 public import Mathlib.Tactic.NormNum
 
 /-!
@@ -18,7 +19,7 @@ entered by the forest `F`, produces a gene tree with unrooted topology `T`.
 * `unrootedOutcome_of_card_roots_eq_four`, `unrootedOutcome_of_card_roots_eq_five`: from four
   (five) roots covering all lineages, the outcome is the proportion of the `6` (`60`) sequences
   of merges down to three roots that produce `T`.
-* `absorb_isForest_singletonForest`, `absorb_card_roots_singletonForest`,
+* `absorb_isForest_singletonForest`, `card_roots_singletonForest`,
   `absorb_lineages_singletonForest`: the forest of `n` uncoalesced lineages is a forest with `n`
   roots covering all lineages.
 -/
@@ -36,21 +37,9 @@ gene tree with unrooted topology `T`. -/
 noncomputable def unrootedOutcome (F T : Finset (Finset L)) : ℝ :=
   ∑ G, if unroot G = T then kingmanAbsorption F G else 0
 
-/-- The sides of the splits of `unroot G`: the clusters of `G` other than `univ`, and their
-complements. -/
-theorem absorb_mem_unroot {G : Finset (Finset L)} {A : Finset L} :
-    A ∈ unroot G ↔ (A ∈ G ∧ A ≠ univ) ∨ (Aᶜ ∈ G ∧ Aᶜ ≠ univ) := by
-  unfold unroot
-  simp only [mem_union, mem_erase, mem_image]
-  constructor
-  · rintro (⟨h1, h2⟩ | ⟨B, ⟨h1, h2⟩, rfl⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · right
-      rw [compl_compl]
-      exact ⟨h2, h1⟩
-  · rintro (⟨h1, h2⟩ | ⟨h1, h2⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · exact Or.inr ⟨Aᶜ, ⟨h2, h1⟩, compl_compl A⟩
+@[deprecated (since := "2026-10-31")] alias absorb_mem_unroot := mem_unroot
+@[deprecated (since := "2026-10-31")] alias absorb_card_roots_singletonForest := card_roots_singletonForest
+@[deprecated (since := "2026-10-31")] alias absorb_roots_singletonForest := roots_singletonForest
 
 /-- Adding the root cluster `univ` does not change the unrooted tree. -/
 theorem absorb_unroot_insert_univ (F : Finset (Finset L)) : unroot (insert univ F) = unroot F := by
@@ -60,9 +49,9 @@ theorem absorb_unroot_insert_univ (F : Finset (Finset L)) : unroot (insert univ 
 /-- Adding a cluster that is already a side of a split does not change the unrooted tree. -/
 theorem absorb_unroot_insert_of_mem {F : Finset (Finset L)} {D : Finset L} (hD : D ∈ unroot F) :
     unroot (insert D F) = unroot F := by
-  rw [absorb_mem_unroot] at hD
+  rw [mem_unroot] at hD
   ext A
-  rw [absorb_mem_unroot, absorb_mem_unroot, mem_insert, mem_insert]
+  rw [mem_unroot, mem_unroot, mem_insert, mem_insert]
   constructor
   · rintro (⟨h | h, hne⟩ | ⟨h | h, hne⟩)
     · subst h
@@ -141,7 +130,7 @@ theorem absorb_union_mem_unroot {F : Finset (Finset L)} (hF : IsForest F)
       tauto
     · intro hxC
       exact ⟨disjoint_left.1 hdisjA hxC, disjoint_left.1 hdisjB hxC⟩
-  rw [absorb_mem_unroot, hcompl]
+  rw [mem_unroot, hcompl]
   refine Or.inr ⟨roots_subset F hCr, fun hCu => ?_⟩
   obtain ⟨a, ha⟩ := hF.1 A (roots_subset F hA)
   exact disjoint_left.1 hdisjA (by rw [hCu]; exact mem_univ a) ha
@@ -263,20 +252,9 @@ theorem absorb_isForest_singletonForest (n : ℕ) : IsForest (singletonForest n)
     · exact Or.inl (by rw [hab])
     · exact Or.inr (Or.inr (disjoint_singleton.2 hab))
 
-/-- Every singleton is a root of the singleton forest. -/
-theorem absorb_roots_singletonForest (n : ℕ) : roots (singletonForest n) = singletonForest n := by
-  unfold roots
-  refine filter_true_of_mem fun A hA B hB hAB => ?_
-  obtain ⟨a, -, rfl⟩ := mem_image.1 hA
-  obtain ⟨b, -, rfl⟩ := mem_image.1 hB
-  rw [singleton_subset_singleton.1 hAB]
-
 theorem absorb_card_singletonForest (n : ℕ) : #(singletonForest n) = n := by
   unfold singletonForest
   rw [card_image_of_injective _ singleton_injective, card_univ, Fintype.card_fin]
-
-theorem absorb_card_roots_singletonForest (n : ℕ) : #(roots (singletonForest n)) = n := by
-  rw [absorb_roots_singletonForest, absorb_card_singletonForest]
 
 theorem absorb_lineages_singletonForest (n : ℕ) : lineages (singletonForest n) = univ := by
   refine eq_univ_of_forall fun a => ?_

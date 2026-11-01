@@ -1,7 +1,7 @@
 module
 
 public import Mathlib.Data.Sym.Card
-public import Phylogenetics.MSC.Defs
+public import Phylogenetics.Coalescent.Defs
 public import Mathlib.Tactic.Ring
 
 /-!
@@ -477,7 +477,7 @@ theorem isForest_sup {ι : Type*} (s : Finset ι) (f : ι → Finset (Finset L))
     · exact Or.inr (Or.inr ((hd hi hj hij).mono (subset_lineages hA) (subset_lineages hB)))
 
 /-- A forest of singletons. -/
-private theorem forest_isForest_image_singleton (S : Finset L) :
+theorem isForest_image_singleton (S : Finset L) :
     IsForest (S.image fun l => {l}) := by
   refine ⟨fun A hA => ?_, fun A hA B hB => ?_⟩
   · obtain ⟨l, -, rfl⟩ := mem_image.1 hA
@@ -497,7 +497,7 @@ private theorem forest_isForest_image_singleton (S : Finset L) :
 /-- Adding singletons to a forest gives a forest. -/
 theorem IsForest.union_image_singleton {F : Finset (Finset L)} (hF : IsForest F)
     (S : Finset L) : IsForest (F ∪ S.image fun l => {l}) := by
-  refine hF.union (forest_isForest_image_singleton S) fun A _ B hB => ?_
+  refine hF.union (isForest_image_singleton S) fun A _ B hB => ?_
   obtain ⟨l, -, rfl⟩ := mem_image.1 hB
   by_cases hl : l ∈ A
   · exact Or.inr (Or.inl (singleton_subset_iff.2 hl))
@@ -506,16 +506,16 @@ theorem IsForest.union_image_singleton {F : Finset (Finset L)} (hF : IsForest F)
 end Building
 
 /-- Every cluster of a forest of singletons is a root. -/
-private theorem forest_roots_image_singleton (S : Finset L) :
+theorem roots_image_singleton (S : Finset L) :
     roots (S.image fun l => {l}) = S.image fun l => {l} := by
   refine subset_antisymm (roots_subset _) fun A hA => mem_roots.2 ⟨hA, fun B hB hAB => ?_⟩
   obtain ⟨l, -, rfl⟩ := mem_image.1 hA
   obtain ⟨m, -, rfl⟩ := mem_image.1 hB
   rw [singleton_subset_singleton.1 hAB]
 
-private theorem forest_card_roots_image_singleton (S : Finset L) :
+theorem card_roots_image_singleton (S : Finset L) :
     #(roots (S.image fun l => {l})) = #S := by
-  rw [forest_roots_image_singleton, card_image_of_injective S singleton_injective]
+  rw [roots_image_singleton, card_image_of_injective S singleton_injective]
 
 /-- The roots of the union of two forests on disjoint sets of lineages. -/
 theorem IsForest.roots_union {F G : Finset (Finset L)} (hF : IsForest F) (hG : IsForest G)
@@ -553,15 +553,15 @@ theorem IsForest.card_roots_union {F G : Finset (Finset L)} (hF : IsForest F) (h
 
 theorem isForest_sampledForest {X : Type*} [DecidableEq X] (s : L → X) (A : Finset X) :
     IsForest (sampledForest s A) :=
-  forest_isForest_image_singleton _
+  isForest_image_singleton _
 
 theorem roots_sampledForest {X : Type*} [DecidableEq X] (s : L → X) (A : Finset X) :
     roots (sampledForest s A) = sampledForest s A :=
-  forest_roots_image_singleton _
+  roots_image_singleton _
 
 theorem card_roots_sampledForest {X : Type*} [DecidableEq X] (s : L → X) (A : Finset X) :
     #(roots (sampledForest s A)) = #(univ.filter fun l => s l ∈ A) :=
-  forest_card_roots_image_singleton _
+  card_roots_image_singleton _
 
 @[simp] theorem lineages_sampledForest {X : Type*} [DecidableEq X] (s : L → X) (A : Finset X) :
     lineages (sampledForest s A) = univ.filter fun l => s l ∈ A :=

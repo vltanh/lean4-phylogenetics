@@ -1,6 +1,7 @@
 module
 
-public import Phylogenetics.Hierarchy.Basic
+public import Phylogenetics.Hierarchy.SpeciesTree
+public import Phylogenetics.Tree.Splits
 
 /-!
 # Unrooted trees are determined by their quartets
@@ -28,9 +29,7 @@ lengths.
 
 ## Proofs
 
-* `mem_unroot_iff_quartets`: rerooting `σ⁻` at a taxon `b₀ ∉ A`, the sides of the splits of `σ⁻`
-  not containing `b₀`, together with `univ` and `{b₀}`, form a hierarchy, in which `A` is a
-  cluster by the rooted-triple criterion `SpeciesTree.mem_clusters_of_triples`.
+* `mem_unroot_iff_quartets`: this is `mem_of_forall_displays`, for the unrooted tree of `σ`.
 * `exists_distinguishing_quartet`: for a cluster `A` of `σ`, take `a, a'` in different children
   of `A`; if the parent `P` of `A` is not the root, take `b ∈ P \ A` and `b' ∉ P`, and otherwise
   take `b, b' ∈ Aᶜ` such that no cluster strictly contained in `Aᶜ` contains both.
@@ -44,63 +43,12 @@ open Finset
 
 variable {X : Type*} [Fintype X] [DecidableEq X]
 
-/-- Membership in `unroot`: a non-root cluster or the complement of one. -/
-private theorem steel_mem_unroot {G : Finset (Finset X)} {A : Finset X} :
-    A ∈ unroot G ↔ (A ∈ G ∧ A ≠ univ) ∨ (Aᶜ ∈ G ∧ Aᶜ ≠ univ) := by
-  unfold unroot
-  rw [mem_union, mem_erase, mem_image]
-  constructor
-  · rintro (⟨h1, h2⟩ | ⟨B, hB, rfl⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · rw [mem_erase] at hB
-      right
-      rw [compl_compl]
-      exact ⟨hB.2, hB.1⟩
-  · rintro (⟨h1, h2⟩ | ⟨h1, h2⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · exact Or.inr ⟨Aᶜ, mem_erase.2 ⟨h2, h1⟩, compl_compl A⟩
-
 /-- `unroot` is closed under complements. -/
 private theorem steel_compl_mem_unroot {G : Finset (Finset X)} {A : Finset X}
     (h : A ∈ unroot G) : Aᶜ ∈ unroot G := by
-  rw [steel_mem_unroot] at h ⊢
+  rw [mem_unroot] at h ⊢
   rw [compl_compl]
   exact h.symm
-
-/-- The sides of the splits of `σ⁻` are nonempty. -/
-private theorem steel_nonempty_of_mem_unroot (σ : SpeciesTree X) {A : Finset X}
-    (h : A ∈ unroot σ.clusters) : A.Nonempty := by
-  rcases steel_mem_unroot.1 h with ⟨h1, _⟩ | ⟨_, h2⟩
-  · exact σ.nonempty_of_mem A h1
-  · rw [nonempty_iff_ne_empty]
-    rintro rfl
-    exact h2 compl_empty
-
-/-- The sides of the splits of `σ⁻` not containing a fixed taxon `b₀` are nested or disjoint. -/
-private theorem steel_laminar_avoid (σ : SpeciesTree X) {b₀ : X} {C D : Finset X}
-    (hC : C ∈ unroot σ.clusters) (hD : D ∈ unroot σ.clusters) (hC₀ : b₀ ∉ C)
-    (hD₀ : b₀ ∉ D) : C ⊆ D ∨ D ⊆ C ∨ Disjoint C D := by
-  rcases steel_mem_unroot.1 hC with ⟨hC1, -⟩ | ⟨hC1, -⟩ <;>
-    rcases steel_mem_unroot.1 hD with ⟨hD1, -⟩ | ⟨hD1, -⟩
-  · exact σ.laminar C hC1 D hD1
-  · rcases σ.laminar C hC1 Dᶜ hD1 with h | h | h
-    · exact Or.inr (Or.inr (subset_compl_iff_disjoint_right.1 h))
-    · exact absurd (h (mem_compl.2 hD₀)) hC₀
-    · left
-      intro x hx
-      by_contra hxD
-      exact disjoint_left.1 h hx (mem_compl.2 hxD)
-  · rcases σ.laminar Cᶜ hC1 D hD1 with h | h | h
-    · exact absurd (h (mem_compl.2 hC₀)) hD₀
-    · exact Or.inr (Or.inr (subset_compl_iff_disjoint_right.1 h).symm)
-    · right; left
-      intro x hx
-      by_contra hxC
-      exact disjoint_left.1 h (mem_compl.2 hxC) hx
-  · rcases σ.laminar Cᶜ hC1 Dᶜ hD1 with h | h | h
-    · exact Or.inr (Or.inl (compl_subset_compl.1 h))
-    · exact Or.inl (compl_subset_compl.1 h)
-    · exact absurd (mem_compl.2 hD₀) (disjoint_left.1 h (mem_compl.2 hC₀))
 
 /-- A split `A | Aᶜ` (with both sides of size at least 2) is a split of `σ⁻` if and only if every
 quartet `aa'|bb'` (`a ≠ a'` in `A`, `b ≠ b'` in `Aᶜ`) is displayed by `σ⁻`, that is, separated by
@@ -114,72 +62,36 @@ theorem mem_unroot_iff_quartets (σ : SpeciesTree X) {A : Finset X} (hA : 2 ≤ 
   · intro h a ha a' ha' b hb b' hb' _ _
     exact ⟨A, h, ha, ha', mem_compl.1 hb, mem_compl.1 hb'⟩
   intro hq
-  obtain ⟨b₀, hb₀⟩ : Aᶜ.Nonempty := card_pos.1 (by omega)
-  have hb₀A : b₀ ∉ A := mem_compl.1 hb₀
-  obtain ⟨b₁, hb₁, hb₁₀⟩ := exists_mem_ne (show 1 < #Aᶜ by omega) b₀
-  have hAne : A.Nonempty := card_pos.1 (by omega)
-  -- the clusters of `σ⁻` rerooted at the leaf `b₀`
-  set F := (unroot σ.clusters).filter fun C => b₀ ∉ C
-  set H := insert univ (insert {b₀} F)
-  have hsing : ∀ x : X, {x} ∈ H := by
-    intro x
-    by_cases hx : x = b₀
-    · subst hx
-      exact mem_insert_of_mem (mem_insert_self _ _)
-    · by_cases hu : ({x} : Finset X) = univ
-      · rw [hu]
-        exact mem_insert_self _ _
-      · refine mem_insert_of_mem (mem_insert_of_mem (mem_filter.2 ⟨?_, ?_⟩))
-        · exact steel_mem_unroot.2 (Or.inl ⟨σ.singleton_mem x, hu⟩)
-        · rw [mem_singleton]
-          exact Ne.symm hx
-  have hne : ∀ C ∈ H, C.Nonempty := by
-    intro C hC
-    rcases mem_insert.1 hC with rfl | hC
-    · exact ⟨b₀, mem_univ _⟩
-    rcases mem_insert.1 hC with rfl | hC
-    · exact singleton_nonempty _
-    exact steel_nonempty_of_mem_unroot σ (mem_filter.1 hC).1
-  have hlam : ∀ C ∈ H, ∀ D ∈ H, C ⊆ D ∨ D ⊆ C ∨ Disjoint C D := by
-    intro C hC D hD
-    rcases mem_insert.1 hC with rfl | hC
-    · exact Or.inr (Or.inl (subset_univ _))
-    rcases mem_insert.1 hD with rfl | hD
-    · exact Or.inl (subset_univ _)
-    rcases mem_insert.1 hC with rfl | hC <;> rcases mem_insert.1 hD with rfl | hD
-    · exact Or.inl (subset_refl _)
-    · exact Or.inr (Or.inr (disjoint_singleton_left.2 (mem_filter.1 hD).2))
-    · exact Or.inr (Or.inr (disjoint_singleton_right.2 (mem_filter.1 hC).2))
-    · exact steel_laminar_avoid σ (mem_filter.1 hC).1 (mem_filter.1 hD).1 (mem_filter.1 hC).2
-        (mem_filter.1 hD).2
-  let τ : SpeciesTree X :=
-    { clusters := H
-      univ_mem := mem_insert_self _ _
-      singleton_mem := hsing
-      nonempty_of_mem := hne
-      laminar := hlam
-      length := fun _ => 1
-      length_pos := fun _ _ _ => one_pos }
-  have key : A ∈ H := by
-    refine τ.mem_clusters_of_triples hAne ?_
-    intro a ha a' ha' b hb
-    by_cases haa : a = a'
-    · subst haa
-      refine ⟨{a}, hsing a, mem_singleton_self a, mem_singleton_self a, ?_⟩
-      rw [mem_singleton]
-      rintro rfl
-      exact hb ha
-    · by_cases hbb : b = b₀
-      · subst hbb
-        obtain ⟨C, hC, h1, h2, -, h4⟩ := hq a ha a' ha' b₁ hb₁ b hb₀ haa hb₁₀
-        exact ⟨C, mem_insert_of_mem (mem_insert_of_mem (mem_filter.2 ⟨hC, h4⟩)), h1, h2, h4⟩
-      · obtain ⟨C, hC, h1, h2, h3, h4⟩ := hq a ha a' ha' b (mem_compl.2 hb) b₀ hb₀ haa hbb
-        exact ⟨C, mem_insert_of_mem (mem_insert_of_mem (mem_filter.2 ⟨hC, h4⟩)), h1, h2, h3⟩
-  rcases mem_insert.1 key with h | h
-  · exact absurd (h ▸ mem_univ b₀) hb₀A
-  rcases mem_insert.1 h with h | h
-  · exact absurd (h ▸ mem_singleton_self b₀) hb₀A
-  exact (mem_filter.1 h).1
+  refine mem_of_forall_displays ⟨σ.clusters, σ.isHierarchy, rfl⟩ hA hA' fun s hs => ?_
+  have hmem : A ∩ s.taxa ∈ s.val := (mem_filter.1 hs).2
+  obtain ⟨a, a', haa, hP⟩ := card_eq_two.1 (s.card_of_mem hmem)
+  obtain ⟨b, b', hbb, hQ⟩ := card_eq_two.1 (s.card_of_mem (s.sdiff_mem hmem))
+  have hPm : ∀ x, x ∈ A ∧ x ∈ s.taxa ↔ x = a ∨ x = a' := fun x => by
+    rw [← mem_inter, hP, mem_insert, mem_singleton]
+  have hQm : ∀ x, (x ∈ s.taxa ∧ ¬ (x ∈ A ∧ x ∈ s.taxa)) ↔ x = b ∨ x = b' := fun x => by
+    rw [← mem_inter, ← mem_sdiff, hQ, mem_insert, mem_singleton]
+  have ha := (hPm a).2 (Or.inl rfl)
+  have ha' := (hPm a').2 (Or.inr rfl)
+  have hb := (hQm b).2 (Or.inl rfl)
+  have hb' := (hQm b').2 (Or.inr rfl)
+  have hbA : ∀ {x}, (x ∈ s.taxa ∧ ¬ (x ∈ A ∧ x ∈ s.taxa)) → x ∈ Aᶜ := fun hx =>
+    mem_compl.2 fun h => hx.2 ⟨h, hx.1⟩
+  obtain ⟨C, hC, h₁, h₂, h₃, h₄⟩ := hq a ha.1 a' ha'.1 b (hbA hb) b' (hbA hb') haa hbb
+  refine ⟨C, hC, ?_⟩
+  have hCA : C ∩ s.taxa = A ∩ s.taxa := by
+    ext x
+    simp only [mem_inter]
+    by_cases hx : x ∈ s.taxa
+    · by_cases hxA : x ∈ A
+      · rcases (hPm x).1 ⟨hxA, hx⟩ with rfl | rfl
+        · exact ⟨fun _ => ⟨hxA, hx⟩, fun _ => ⟨h₁, hx⟩⟩
+        · exact ⟨fun _ => ⟨hxA, hx⟩, fun _ => ⟨h₂, hx⟩⟩
+      · rcases (hQm x).1 ⟨hx, fun h => hxA h.1⟩ with rfl | rfl
+        · exact ⟨fun h => absurd h.1 h₃, fun h => absurd h.1 hxA⟩
+        · exact ⟨fun h => absurd h.1 h₄, fun h => absurd h.1 hxA⟩
+    · exact ⟨fun h => absurd h.2 hx, fun h => absurd h.2 hx⟩
+  rw [hCA]
+  exact hmem
 
 /-- Two taxa `x ≠ y` of a set `N` with at least two elements such that no cluster strictly
 contained in `N` contains both. -/
@@ -261,7 +173,7 @@ private theorem steel_distinguishing_of_mem_clusters (σ : SpeciesTree X) {A : F
         · exact disjoint_left.1 h hbD hbP
   refine ⟨a, ha, a', ha', b, hb, b', hb', haa, hbb, ?_⟩
   intro C hC haC ha'C hbC hb'C
-  rcases steel_mem_unroot.1 hC with ⟨hC1, -⟩ | ⟨hC1, -⟩
+  rcases mem_unroot.1 hC with ⟨hC1, -⟩ | ⟨hC1, -⟩
   · have hAC := hup C hC1 haC ha'C
     by_contra hne
     rcases hP1 C hC1 (Finset.ssubset_iff_subset_ne.2 ⟨hAC, Ne.symm hne⟩) with h | h
@@ -285,7 +197,7 @@ theorem exists_distinguishing_quartet (σ : SpeciesTree X) {A : Finset X}
     (hA : A ∈ unroot σ.clusters) (hA₁ : 2 ≤ #A) (hA₂ : 2 ≤ #Aᶜ) :
     ∃ a ∈ A, ∃ a' ∈ A, ∃ b ∈ Aᶜ, ∃ b' ∈ Aᶜ, a ≠ a' ∧ b ≠ b' ∧
       ∀ C ∈ unroot σ.clusters, a ∈ C → a' ∈ C → b ∉ C → b' ∉ C → C = A := by
-  rcases steel_mem_unroot.1 hA with ⟨hA1, hA2⟩ | ⟨hA1, hA2⟩
+  rcases mem_unroot.1 hA with ⟨hA1, hA2⟩ | ⟨hA1, hA2⟩
   · exact steel_distinguishing_of_mem_clusters σ hA1 hA2 hA₁ hA₂
   · obtain ⟨a, ha, a', ha', b, hb, b', hb', haa, hbb, h⟩ :=
       steel_distinguishing_of_mem_clusters σ hA1 hA2 hA₂ (by rwa [compl_compl])

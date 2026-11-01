@@ -4,7 +4,7 @@ public import Mathlib.Analysis.Normed.Algebra.MatrixExponential
 public import Mathlib.Analysis.Matrix.Normed
 public import Mathlib.Analysis.SpecialFunctions.Exponential
 public import Phylogenetics.Coalescent.Forest
-public import Phylogenetics.MSC.Notions
+public import Phylogenetics.Coalescent.Defs
 public import Mathlib.Tactic.Linarith
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.Positivity
@@ -274,7 +274,7 @@ theorem deathProb_self (k : ℕ) (t : ℝ) :
 
 set_option backward.isDefEq.respectTransparency false in
 /-- The entries of the exponential of a real matrix are given by the exponential series. -/
-private theorem fact_hasSum_exp_apply {ι : Type*} [Fintype ι] [DecidableEq ι]
+theorem hasSum_exp_apply {ι : Type*} [Fintype ι] [DecidableEq ι]
     (A : Matrix ι ι ℝ) (i j : ι) :
     HasSum (fun n : ℕ => ((n.factorial : ℝ))⁻¹ * (A ^ n) i j) (NormedSpace.exp A i j) := by
   open scoped Matrix.Norms.Operator in
@@ -332,7 +332,7 @@ theorem kingmanTransition_apply {F : Finset (Finset L)} (hF : IsForest F) (t : �
     (G : Finset (Finset L)) :
     kingmanTransition t F G =
       deathProb (#(roots F)) (#(roots G)) t * (jumpMatrix ^ (#(roots F) - #(roots G))) F G := by
-  have h1 := fact_hasSum_exp_apply (t • kingmanGenerator (L := L)) F G
+  have h1 := hasSum_exp_apply (t • kingmanGenerator (L := L)) F G
   have h2 := (hasSum_deathProb (#(roots F)) (#(roots G)) t).mul_right
     ((jumpMatrix ^ (#(roots F) - #(roots G))) F G)
   refine h1.unique ?_
@@ -399,13 +399,13 @@ theorem kingmanTransition_nonneg {t : ℝ} (ht : 0 ≤ t) (F G : Finset (Finset 
       exact Finset.sum_nonneg fun F' _ => mul_nonneg (hP F F') (ih F' G)
   have hexpP : ∀ F G, 0 ≤ NormedSpace.exp (t • P) F G := by
     intro F G
-    refine (fact_hasSum_exp_apply (t • P) F G).nonneg fun n => ?_
+    refine (hasSum_exp_apply (t • P) F G).nonneg fun n => ?_
     rw [smul_pow, Matrix.smul_apply, smul_eq_mul]
     exact mul_nonneg (by positivity) (mul_nonneg (pow_nonneg ht n) (hPn n F G))
   have hscal : ∀ (r : ℝ) (F G : Finset (Finset L)), 0 ≤
       NormedSpace.exp (r • (1 : Matrix (Finset (Finset L)) (Finset (Finset L)) ℝ)) F G := by
     intro r F G
-    have h := fact_hasSum_exp_apply
+    have h := hasSum_exp_apply
       (r • (1 : Matrix (Finset (Finset L)) (Finset (Finset L)) ℝ)) F G
     simp_rw [smul_pow, one_pow, Matrix.smul_apply, fact_one_apply, smul_eq_mul] at h
     by_cases hGF : G = F
@@ -442,7 +442,7 @@ private theorem fact_sum_kingmanGenerator_pow {F : Finset (Finset L)} (hF : IsFo
 theorem kingmanTransition_sum {F : Finset (Finset L)} (hF : IsForest F) (t : ℝ) :
     ∑ G, kingmanTransition t F G = 1 := by
   have h := hasSum_sum (s := univ) fun G _ =>
-    fact_hasSum_exp_apply (t • kingmanGenerator (L := L)) F G
+    hasSum_exp_apply (t • kingmanGenerator (L := L)) F G
   refine h.unique ?_
   convert hasSum_ite_eq 0 (1 : ℝ) using 1
   funext n
@@ -466,43 +466,14 @@ theorem kingmanTransition_support {F G : Finset (Finset L)} (hF : IsForest F) {t
 
 /-! ### Forests of singletons -/
 
-omit [Fintype L] in
-private theorem fact_isForest_image_singleton (S : Finset L) :
-    IsForest (S.image fun l => ({l} : Finset L)) := by
-  constructor
-  · intro A hA
-    obtain ⟨l, -, rfl⟩ := Finset.mem_image.mp hA
-    exact Finset.singleton_nonempty l
-  · intro A hA B hB
-    obtain ⟨a, -, rfl⟩ := Finset.mem_image.mp hA
-    obtain ⟨b, -, rfl⟩ := Finset.mem_image.mp hB
-    by_cases hab : a = b
-    · subst hab
-      exact Or.inl subset_rfl
-    · exact Or.inr (Or.inr (Finset.disjoint_singleton.mpr hab))
-
-private theorem fact_roots_image_singleton (S : Finset L) :
-    roots (S.image fun l => ({l} : Finset L)) = S.image fun l => ({l} : Finset L) := by
-  unfold roots
-  apply Finset.filter_true_of_mem
-  intro A hA B hB hAB
-  obtain ⟨a, -, rfl⟩ := Finset.mem_image.mp hA
-  obtain ⟨b, -, rfl⟩ := Finset.mem_image.mp hB
-  rw [Finset.singleton_subset_singleton] at hAB
-  rw [hAB]
-
-private theorem fact_card_roots_image_singleton (S : Finset L) :
-    #(roots (S.image fun l => ({l} : Finset L))) = #S := by
-  rw [fact_roots_image_singleton, Finset.card_image_of_injective _ Finset.singleton_injective]
-
 theorem isForest_singletonForest (n : ℕ) : IsForest (singletonForest n) :=
-  fact_isForest_image_singleton _
+  isForest_image_singleton _
 
 theorem roots_singletonForest (n : ℕ) : roots (singletonForest n) = singletonForest n :=
-  fact_roots_image_singleton _
+  roots_image_singleton _
 
 theorem card_roots_singletonForest (n : ℕ) : #(roots (singletonForest n)) = n := by
-  rw [singletonForest, fact_card_roots_image_singleton, Finset.card_univ, Fintype.card_fin]
+  rw [singletonForest, card_roots_image_singleton, Finset.card_univ, Fintype.card_fin]
 
 /-! ### The pure death process: transition probabilities -/
 

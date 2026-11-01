@@ -1,22 +1,19 @@
 module
 
 public import Phylogenetics.MSC.Basic
+public import Phylogenetics.Coalescent.Relabel
 
 /-!
 # Relabelling taxa
 
 Everything in the model is natural with respect to bijections of the taxa: relabelling a species
-tree relabels its gene tree distributions.
+tree relabels its gene tree distributions. The relabelling of families of clusters and Kingman's
+coalescent is in `Phylogenetics.Coalescent.Relabel`.
 
-* `relabelFamily e F`: the image of a family of clusters under a bijection `e : X ≃ Y`;
-  `relabelFamilyEquiv e`: the same map, as an equivalence.
 * `SpeciesTree.relabel σ e`: the species tree `σ` with taxa relabelled by `e`.
 
 ## Main results
 
-* `kingmanGenerator_relabelFamily`, `kingmanTransition_relabelFamily`,
-  `kingmanAbsorption_relabelFamily`: Kingman's coalescent is invariant under relabelling the
-  lineages.
 * `forestDist_relabel`: naturality of the multispecies coalescent under relabelling the taxa and
   the lineages; `forestDist_relabel_lineages`: relabelling the lineages only.
 * `SpeciesTree.unrootedDist_relabel`, `SpeciesTree.rootedDist_relabel`: the gene tree
@@ -33,212 +30,20 @@ open Finset
 
 variable {X : Type*} [Fintype X] [DecidableEq X] {Y : Type*} [Fintype Y] [DecidableEq Y]
 
-/-- The image of a family of clusters under a bijection. -/
-def relabelFamily (e : X ≃ Y) (F : Finset (Finset X)) : Finset (Finset Y) :=
-  F.image fun A => A.map e.toEmbedding
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-private lemma msc_map_symm_map (e : X ≃ Y) (A : Finset X) :
-    (A.map e.toEmbedding).map e.symm.toEmbedding = A := by
-  ext x
-  simp
-
-private lemma msc_map_compl (e : X ≃ Y) (A : Finset X) :
-    (A.map e.toEmbedding)ᶜ = Aᶜ.map e.toEmbedding := by
-  ext y
-  simp [Finset.mem_map_equiv]
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-private lemma msc_map_map_symm (e : X ≃ Y) (B : Finset Y) :
-    (B.map e.symm.toEmbedding).map e.toEmbedding = B := by
-  ext x
-  simp
 
 omit [DecidableEq X] [DecidableEq Y] in
 private lemma msc_map_eq_univ_iff (e : X ≃ Y) (A : Finset X) :
     A.map e.toEmbedding = univ ↔ A = univ := by
   rw [← Finset.map_univ_equiv e, Finset.map_inj]
 
-omit [Fintype X] [DecidableEq X] [Fintype Y] in
-theorem relabelFamily_injective (e : X ≃ Y) : Function.Injective (relabelFamily e) :=
-  Finset.image_injective (Finset.map_injective e.toEmbedding)
-
-omit [Fintype X] [Fintype Y] in
-theorem relabelFamily_symm (e : X ≃ Y) (F : Finset (Finset X)) :
-    relabelFamily e.symm (relabelFamily e F) = F := by
-  unfold relabelFamily
-  rw [image_image]
-  conv_rhs => rw [← image_id (s := F)]
-  congr 1
-  funext A
-  exact msc_map_symm_map e A
-
-theorem unroot_relabelFamily (e : X ≃ Y) (F : Finset (Finset X)) :
-    unroot (relabelFamily e F) = relabelFamily e (unroot F) := by
-  have herase : (relabelFamily e F).erase univ = relabelFamily e (F.erase univ) := by
-    unfold relabelFamily
-    rw [Finset.image_erase (Finset.map_injective e.toEmbedding), Finset.map_univ_equiv]
-  unfold unroot
-  rw [herase]
-  unfold relabelFamily
-  rw [image_union, image_image, image_image]
-  congr 2
-  funext A
-  exact msc_map_compl e A
-
-/-- Relabelling families of clusters along `e`, as an equivalence. -/
-def relabelFamilyEquiv (e : X ≃ Y) : Finset (Finset X) ≃ Finset (Finset Y) where
-  toFun := relabelFamily e
-  invFun := relabelFamily e.symm
-  left_inv := relabelFamily_symm e
-  right_inv := fun F => by simpa using relabelFamily_symm e.symm F
-
-omit [Fintype X] [Fintype Y] in
-@[simp] theorem relabelFamilyEquiv_apply (e : X ≃ Y) (F : Finset (Finset X)) :
-    relabelFamilyEquiv e F = relabelFamily e F := rfl
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] in
-theorem mem_relabelFamily {e : X ≃ Y} {F : Finset (Finset X)} {B : Finset Y} :
-    B ∈ relabelFamily e F ↔ B.map e.symm.toEmbedding ∈ F := by
-  unfold relabelFamily
-  rw [mem_image]
-  constructor
-  · rintro ⟨A, hA, rfl⟩
-    rwa [msc_map_symm_map]
-  · intro h
-    refine ⟨_, h, ?_⟩
-    ext y
-    simp [Finset.mem_map_equiv]
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] in
-theorem map_mem_relabelFamily {e : X ≃ Y} {F : Finset (Finset X)} {A : Finset X} :
-    A.map e.toEmbedding ∈ relabelFamily e F ↔ A ∈ F := by
-  rw [mem_relabelFamily, msc_map_symm_map]
-
-omit [Fintype X] [Fintype Y] in
-theorem relabelFamily_union (e : X ≃ Y) (F G : Finset (Finset X)) :
-    relabelFamily e (F ∪ G) = relabelFamily e F ∪ relabelFamily e G :=
-  image_union _ _
 
 
-section Kernels
 
-variable {L : Type*} [Fintype L] [DecidableEq L] {M : Type*} [Fintype M] [DecidableEq M]
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-theorem roots_relabelFamily (e : L ≃ M) (F : Finset (Finset L)) :
-    roots (relabelFamily e F) = relabelFamily e (roots F) := by
-  unfold roots relabelFamily
-  rw [filter_image]
-  congr 1
-  refine filter_congr fun A _ => ?_
-  rw [Finset.forall_mem_image]
-  constructor
-  · intro h B hB hAB
-    exact Finset.map_injective _ (h hB (Finset.map_subset_map.2 hAB))
-  · intro h B hB hAB
-    rw [h B hB (Finset.map_subset_map.1 hAB)]
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] [Fintype L] [DecidableEq L]
-  [Fintype M] in
-theorem card_relabelFamily (e : L ≃ M) (F : Finset (Finset L)) :
-    #(relabelFamily e F) = #F :=
-  card_image_of_injective _ (Finset.map_injective e.toEmbedding)
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-/-- The generator of Kingman's coalescent is invariant under relabelling the lineages. -/
-theorem kingmanGenerator_relabelFamily (e : L ≃ M) (F G : Finset (Finset L)) :
-    kingmanGenerator (relabelFamily e F) (relabelFamily e G) = kingmanGenerator F G := by
-  unfold kingmanGenerator
-  rw [roots_relabelFamily, card_relabelFamily]
-  by_cases hGF : G = F
-  · subst hGF
-    simp
-  · have hne : relabelFamily e G ≠ relabelFamily e F := fun h => hGF (relabelFamily_injective e h)
-    rw [ite_eq_right hne, ite_eq_right hGF]
-    refine if_congr ?_ rfl rfl
-    constructor
-    · rintro ⟨A', hA', B', hB', hAB', hF⟩
-      obtain ⟨A, hA, rfl⟩ := mem_image.1 hA'
-      obtain ⟨B, hB, rfl⟩ := mem_image.1 hB'
-      refine ⟨A, hA, B, hB, fun h => hAB' (h ▸ rfl), relabelFamily_injective e ?_⟩
-      rw [hF]
-      unfold relabelFamily
-      rw [image_insert, Finset.map_union]
-    · rintro ⟨A, hA, B, hB, hAB, rfl⟩
-      refine ⟨A.map e.toEmbedding, mem_image_of_mem _ hA, B.map e.toEmbedding,
-        mem_image_of_mem _ hB, fun h => hAB (Finset.map_injective _ h), ?_⟩
-      unfold relabelFamily
-      rw [image_insert, Finset.map_union]
-
-/-- The matrix exponential commutes with reindexing along an equivalence. -/
-private lemma msc_exp_submatrix {m n : Type*} [Fintype m] [DecidableEq m] [Fintype n]
-    [DecidableEq n] (π : n ≃ m) (A : Matrix m m ℝ) :
-    NormedSpace.exp (A.submatrix π π) = (NormedSpace.exp A).submatrix π π := by
-  have hpow : ∀ k : ℕ, (A.submatrix π π) ^ k = (A ^ k).submatrix π π := by
-    intro k
-    induction k with
-    | zero => simp [Matrix.submatrix_one_equiv]
-    | succ k ih => rw [pow_succ, ih, Matrix.submatrix_mul_equiv, pow_succ]
-  let g := Matrix.reindexLinearEquiv ℝ ℝ π.symm π.symm
-  have hg : ∀ M : Matrix m m ℝ, g M = M.submatrix π π := fun M => rfl
-  have hgc : Continuous g := by
-    show Continuous fun M : Matrix m m ℝ => M.submatrix π π
-    exact continuous_id.matrix_submatrix π π
-  have hg'c : Continuous fun M : Matrix n n ℝ => M.submatrix π.symm π.symm :=
-    continuous_id.matrix_submatrix π.symm π.symm
-  have hinv : Function.LeftInverse (fun M : Matrix n n ℝ => M.submatrix π.symm π.symm) g := by
-    intro M
-    show (M.submatrix π π).submatrix π.symm π.symm = M
-    rw [Matrix.submatrix_submatrix, π.self_comp_symm, Matrix.submatrix_id_id]
-  have key := Function.LeftInverse.map_tsum (L := SummationFilter.unconditional ℕ)
-    (fun k : ℕ => ((k.factorial : ℝ)⁻¹) • A ^ k) hgc hg'c hinv
-  simp only [hg] at key
-  rw [NormedSpace.exp_eq_tsum ℝ, NormedSpace.exp_eq_tsum ℝ]
-  dsimp only
-  rw [key]
-  congr 1
-  funext k
-  rw [Matrix.submatrix_smul, hpow]
-  rfl
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-/-- Kingman's coalescent is invariant under relabelling the lineages. -/
-theorem kingmanTransition_relabelFamily (e : L ≃ M) (t : ℝ) (F G : Finset (Finset L)) :
-    kingmanTransition t (relabelFamily e F) (relabelFamily e G) = kingmanTransition t F G := by
-  have hQ : (kingmanGenerator (L := M)).submatrix (relabelFamilyEquiv e) (relabelFamilyEquiv e) =
-      kingmanGenerator (L := L) := by
-    ext F G
-    exact kingmanGenerator_relabelFamily e F G
-  have hs : t • (kingmanGenerator (L := M)).submatrix (relabelFamilyEquiv e)
-      (relabelFamilyEquiv e) = (t • kingmanGenerator (L := M)).submatrix (relabelFamilyEquiv e)
-      (relabelFamilyEquiv e) := by
-    ext F G
-    rfl
-  unfold kingmanTransition
-  rw [← hQ, hs, msc_exp_submatrix]
-  rfl
-
-omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] in
-theorem kingmanAbsorption_relabelFamily (e : L ≃ M) (F G : Finset (Finset L)) :
-    kingmanAbsorption (relabelFamily e F) (relabelFamily e G) = kingmanAbsorption F G := by
-  unfold kingmanAbsorption
-  simp_rw [kingmanTransition_relabelFamily]
-
-end Kernels
 
 section Naturality
 
 variable {L : Type*} [Fintype L] [DecidableEq L] {M : Type*} [Fintype M] [DecidableEq M]
 
-theorem childClusters_relabelFamily (e : X ≃ Y) (H : Finset (Finset X)) (A : Finset X) :
-    childClusters (relabelFamily e H) (A.map e.toEmbedding) =
-      relabelFamily e (childClusters H A) := by
-  unfold childClusters relabelFamily
-  rw [filter_image]
-  congr 1
-  refine filter_congr fun B _ => ?_
-  simp only [Finset.map_ssubset_map, Finset.forall_mem_image]
 
 omit [Fintype X] [Fintype Y] in
 theorem sampledForest_relabel (e : X ≃ Y) (eL : L ≃ M) {s : L → X} {s' : M → Y}
@@ -257,7 +62,7 @@ theorem sampledForest_relabel (e : X ≃ Y) (eL : L ≃ M) {s : L → X} {s' : M
     refine ⟨eL l, ?_, ?_⟩
     · rw [hs]
       exact Finset.mem_map_of_mem _ hl
-    · rw [← msc_map_map_symm eL C, ← hC]
+    · rw [← map_map_symm_equiv eL C, ← hC]
       simp
 
 omit [Fintype X] [DecidableEq X] [Fintype Y] [DecidableEq Y] [Fintype L] [Fintype M] in
@@ -319,14 +124,6 @@ theorem forestDist_relabel (e : X ≃ Y) (eL : L ≃ M) (H : Finset (Finset X))
     rw [hsup, sampledForest_relabel e eL hs, ← relabelFamily_union]
     exact populationKernel_relabel e eL hlen A _ G
 
-omit [Fintype X] in
-theorem relabelFamily_refl (F : Finset (Finset X)) : relabelFamily (Equiv.refl X) F = F := by
-  unfold relabelFamily
-  conv_rhs => rw [← image_id (s := F)]
-  congr 1
-  funext A
-  ext x
-  simp
 
 /-- Relabelling the lineages only. -/
 theorem forestDist_relabel_lineages (eL : L ≃ M) (H : Finset (Finset X)) (len : Finset X → ℝ)
@@ -371,7 +168,7 @@ theorem SpeciesTree.relabel_length_pos (σ : SpeciesTree X) (e : X ≃ Y) :
     ∀ B ∈ relabelFamily e σ.clusters, B ≠ univ → 0 < σ.length (B.map e.symm.toEmbedding) := by
   intro B hB hBu
   obtain ⟨A, hA, rfl⟩ := mem_image.1 hB
-  rw [msc_map_symm_map]
+  rw [map_symm_map_equiv]
   exact σ.length_pos A hA fun h => hBu ((msc_map_eq_univ_iff e A).2 h)
 
 /-- The species tree `σ` with its taxa relabelled by `e`. -/
@@ -392,7 +189,7 @@ theorem SpeciesTree.relabel_length (σ : SpeciesTree X) (e : X ≃ Y) (B : Finse
 
 @[simp] theorem SpeciesTree.relabel_length_map (σ : SpeciesTree X) (e : X ≃ Y) (A : Finset X) :
     (σ.relabel e).length (A.map e.toEmbedding) = σ.length A := by
-  rw [SpeciesTree.relabel_length, msc_map_symm_map]
+  rw [SpeciesTree.relabel_length, map_symm_map_equiv]
 
 private lemma msc_speciesTree_eq {σ σ' : SpeciesTree X} (h1 : σ.clusters = σ'.clusters)
     (h2 : σ.length = σ'.length) : σ = σ' := by
@@ -408,7 +205,7 @@ theorem SpeciesTree.relabel_relabel_symm (σ : SpeciesTree X) (e : X ≃ Y) :
   refine msc_speciesTree_eq (relabelFamily_symm e σ.clusters) ?_
   funext A
   show σ.length ((A.map e.symm.symm.toEmbedding).map e.symm.toEmbedding) = σ.length A
-  rw [Equiv.symm_symm, msc_map_symm_map]
+  rw [Equiv.symm_symm, map_symm_map_equiv]
 
 private lemma msc_isBinary_relabel {σ : SpeciesTree X} (e : X ≃ Y) (h : σ.IsBinary) :
     (σ.relabel e).IsBinary := by
@@ -476,7 +273,7 @@ theorem SpeciesTree.unrootedLength_relabel (σ : SpeciesTree X) (e : X ≃ Y) (A
   rw [filter_image, sum_image fun x _ y _ h => Finset.map_injective _ h]
   refine Finset.sum_congr (filter_congr fun C _ => ?_) fun C _ =>
     SpeciesTree.relabel_length_map σ e C
-  simp only [ne_eq, msc_map_eq_univ_iff, Finset.map_inj, msc_map_compl]
+  simp only [ne_eq, msc_map_eq_univ_iff, Finset.map_inj, compl_map_equiv]
 
 theorem SpeciesTree.sameUnrootedMetricTree_relabel_iff (σ σ' : SpeciesTree X) (e : X ≃ Y) :
     (σ.relabel e).SameUnrootedMetricTree (σ'.relabel e) ↔ σ.SameUnrootedMetricTree σ' := by
@@ -485,10 +282,10 @@ theorem SpeciesTree.sameUnrootedMetricTree_relabel_iff (σ σ' : SpeciesTree X) 
   refine and_congr (relabelFamily_injective e).eq_iff ⟨fun h A hA hA2 hAc2 => ?_,
     fun h B hB hB2 hBc2 => ?_⟩
   · have := h (A.map e.toEmbedding) (map_mem_relabelFamily.2 hA) (by rwa [Finset.card_map])
-      (by rwa [msc_map_compl, Finset.card_map])
+      (by rwa [compl_map_equiv, Finset.card_map])
     rwa [SpeciesTree.unrootedLength_relabel, SpeciesTree.unrootedLength_relabel] at this
   · obtain ⟨A, hA, rfl⟩ := mem_image.1 hB
     rw [SpeciesTree.unrootedLength_relabel, SpeciesTree.unrootedLength_relabel]
-    exact h A hA (by rwa [Finset.card_map] at hB2) (by rwa [msc_map_compl, Finset.card_map] at hBc2)
+    exact h A hA (by rwa [Finset.card_map] at hB2) (by rwa [compl_map_equiv, Finset.card_map] at hBc2)
 
 end Phylogenetics

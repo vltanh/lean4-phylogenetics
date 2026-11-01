@@ -3,6 +3,7 @@ module
 public import Mathlib.Algebra.Order.Ring.Star
 public import Mathlib.Algebra.Order.Star.Rat
 public import Phylogenetics.MSC.Basic
+public import Phylogenetics.Coalescent.BinaryForest
 public import Mathlib.Tactic.Ring
 public import Mathlib.Tactic.NormNum
 
@@ -231,24 +232,6 @@ theorem model_internal_of_card_le_one {H : Finset (Finset X)} {A : Finset X} (hA
   have := card_le_card hbA
   omega
 
-/-- A cluster strictly inside `A` lies inside a child of `A`. -/
-private theorem model_exists_child_superset {H : Finset (Finset X)} (hH : IsHierarchy H)
-    {A b : Finset X} (hb : b ∈ H) (hbA : b ⊂ A) : ∃ B ∈ childClusters H A, b ⊆ B := by
-  obtain ⟨x, hx⟩ := hH.2.2.1 b hb
-  have hA2 : 2 ≤ #A := by
-    have h2 := card_lt_card hbA
-    have h3 := (hH.2.2.1 b hb).card_pos
-    omega
-  obtain ⟨B, hB, hxB⟩ := hH.exists_mem_childClusters hA2 (hbA.subset hx)
-  refine ⟨B, hB, ?_⟩
-  obtain ⟨hBH, -, hmax⟩ := mem_childClusters.1 hB
-  rcases hH.2.2.2 b hb B hBH with h | h | h
-  · exact h
-  · rcases h.eq_or_ssubset with h' | h'
-    · exact h'.ge
-    · exact absurd hbA (hmax b hb h')
-  · exact absurd hxB (disjoint_left.1 h hx)
-
 private theorem model_internal_pairwiseDisjoint {H : Finset (Finset X)} (hH : IsHierarchy H)
     (A : Finset X) :
     ((univ : Finset (childClusters H A)) : Set (childClusters H A)).PairwiseDisjoint
@@ -269,7 +252,7 @@ private theorem model_internal_erase {H : Finset (Finset X)} (hH : IsHierarchy H
   rw [mem_erase, model_mem_internal, mem_biUnion]
   constructor
   · rintro ⟨hbA', hb, hbA, hbu, hb2⟩
-    obtain ⟨B, hB, hbB⟩ := model_exists_child_superset hH hb (hbA.ssubset_of_ne hbA')
+    obtain ⟨B, hB, hbB⟩ := IsHierarchy.exists_mem_childClusters_superset hH hb (hbA.ssubset_of_ne hbA')
     exact ⟨⟨B, hB⟩, mem_univ _, model_mem_internal.2 ⟨hb, hbB, hbu, hb2⟩⟩
   · rintro ⟨B, -, hbB⟩
     obtain ⟨hb, hbB, hbu, hb2⟩ := model_mem_internal.1 hbB
@@ -496,62 +479,23 @@ section Binary
 
 variable {X : Type*} [Fintype X] [DecidableEq X] {L : Type*} [Fintype L] [DecidableEq L]
 
-/-- Every cluster with at least two elements is the union of two disjoint clusters. -/
-def model_IsBinaryForest (F : Finset (Finset L)) : Prop :=
-  ∀ A ∈ F, 2 ≤ #A → ∃ B ∈ F, ∃ C ∈ F, Disjoint B C ∧ B ∪ C = A
-
-theorem model_isBinaryForest_merge {F G : Finset (Finset L)} (hF : IsForest F)
-    (hb : model_IsBinaryForest F) (hG : G ∈ merges F) : model_IsBinaryForest G := by
-  obtain ⟨A, hA, B, hB, hAB, rfl⟩ := mem_merges.1 hG
-  intro C hC hC2
-  rcases mem_insert.1 hC with rfl | hC
-  · exact ⟨A, mem_insert_of_mem (roots_subset F hA), B, mem_insert_of_mem (roots_subset F hB),
-      hF.disjoint_of_mem_roots hA hB hAB, rfl⟩
-  · obtain ⟨D, hD, E, hE, hDE, hDEC⟩ := hb C hC hC2
-    exact ⟨D, mem_insert_of_mem hD, E, mem_insert_of_mem hE, hDE, hDEC⟩
-
-theorem model_isBinaryForest_of_jumpMatrix_pow {F G : Finset (Finset L)} (hF : IsForest F)
-    (hb : model_IsBinaryForest F) {n : ℕ} (h : (jumpMatrix ^ n) F G ≠ 0) :
-    model_IsBinaryForest G := by
-  induction n generalizing F with
-  | zero =>
-    rw [pow_zero] at h
-    by_cases hGF : G = F
-    · exact hGF ▸ hb
-    · exact absurd (Matrix.one_apply_ne (Ne.symm hGF)) h
-  | succ n ih =>
-    rw [pow_succ', Matrix.mul_apply] at h
-    obtain ⟨F', -, hF'⟩ := exists_ne_zero_of_sum_ne_zero h
-    have hJ := left_ne_zero_of_mul hF'
-    have hJn := right_ne_zero_of_mul hF'
-    by_cases hk : #(roots F) ≤ 1
-    · have hF'F : F' = F := by
-        by_contra hne
-        exact hJ (by simp only [jumpMatrix, hk, hne, ↓reduceIte])
-      subst hF'F
-      exact ih hF hb hJn
-    · have hmem : F' ∈ merges F := by
-        by_contra hne
-        exact hJ (by rw [jumpMatrix_apply_of_isForest (by omega), ite_eq_right hne])
-      exact ih (hF.of_mem_merges hmem).1 (model_isBinaryForest_merge hF hb hmem) hJn
-
 theorem model_isBinaryForest_of_populationKernel {len : Finset X → ℝ} {A : Finset X}
-    {F G : Finset (Finset L)} (hF : IsForest F) (hb : model_IsBinaryForest F)
-    (h : populationKernel len A F G ≠ 0) : model_IsBinaryForest G := by
+    {F G : Finset (Finset L)} (hF : IsForest F) (hb : IsBinaryForest F)
+    (h : populationKernel len A F G ≠ 0) : IsBinaryForest G := by
   unfold populationKernel at h
   split_ifs at h with hA
   · rw [kingmanAbsorption_apply hF] at h
     split_ifs at h with h0 h1 h2
     · exact h1 ▸ hb
     · exact absurd rfl h
-    · exact model_isBinaryForest_of_jumpMatrix_pow hF hb h
+    · exact isBinaryForest_of_jumpMatrix_pow hF hb h
     · exact absurd rfl h
   · rw [kingmanTransition_apply hF] at h
-    exact model_isBinaryForest_of_jumpMatrix_pow hF hb (right_ne_zero_of_mul h)
+    exact isBinaryForest_of_jumpMatrix_pow hF hb (right_ne_zero_of_mul h)
 
 theorem model_isBinaryForest_of_forestDist {H : Finset (Finset X)} (hH : IsHierarchy H)
     (len : Finset X → ℝ) (s : L → X) {A : Finset X} (hA : A ∈ H) {G : Finset (Finset L)}
-    (hG : forestDist H len s A G ≠ 0) : model_IsBinaryForest G := by
+    (hG : forestDist H len s A G ≠ 0) : IsBinaryForest G := by
   induction A using Finset.strongInduction generalizing G with
   | H A ih =>
   rw [forestDist] at hG
@@ -563,7 +507,7 @@ theorem model_isBinaryForest_of_forestDist {H : Finset (Finset X)} (hH : IsHiera
     obtain ⟨h1, -, h3⟩ := forestDist_support hH len s (mem_childClusters.1 B.2).1
       (prod_ne_zero_iff.1 hprod B (mem_univ _))
     exact ⟨h1, h3⟩
-  have hbB : ∀ B : childClusters H A, model_IsBinaryForest (f B) := fun B =>
+  have hbB : ∀ B : childClusters H A, IsBinaryForest (f B) := fun B =>
     ih B (mem_childClusters.1 B.2).2.1 (mem_childClusters.1 B.2).1
       (prod_ne_zero_iff.1 hprod B (mem_univ _))
   refine model_isBinaryForest_of_populationKernel (hH.isForest_entering f hfB).1 ?_

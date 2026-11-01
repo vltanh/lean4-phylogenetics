@@ -1,6 +1,7 @@
 module
 
 public import Phylogenetics.Hierarchy.Counts
+public import Phylogenetics.Hierarchy.SpeciesTree
 
 /-!
 # The root of a species tree on its unrooted tree

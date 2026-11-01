@@ -19,6 +19,8 @@ converges to the probability that the jump chain, run until one root is left, en
   otherwise (and the identity on the empty forest).
 * `kingmanTransition_mul_kingmanAbsorption`: running for a finite time and then for an infinite
   time is running for an infinite time.
+* `sum_kingmanTransition_comp`, `kingmanTransition_comp`, `kingmanAbsorption_comp`: a map of forests
+  that intertwines the generators lumps the coalescent.
 -/
 
 @[expose] public section
@@ -28,21 +30,6 @@ namespace Phylogenetics
 open Finset Real Filter Topology
 
 variable {L : Type*} [Fintype L] [DecidableEq L]
-
-/-- From `k ≥ 1` lineages the pure death process never reaches `0`: the entries `(k, 0)` of the
-powers of its generator vanish. -/
-private theorem absorb_deathPow_zero (m k : ℕ) (hk : 1 ≤ k) : deathPow m k 0 = 0 := by
-  induction m generalizing k with
-  | zero => simp only [deathPow]; rw [ite_eq_right (by omega)]
-  | succ m ih =>
-    simp only [deathPow]
-    rcases Nat.lt_or_ge k 2 with h | h
-    · obtain rfl : k = 1 := by omega
-      simp
-    · rw [ih (k - 1) (by omega), ih k hk, sub_self, mul_zero]
-
-private theorem absorb_deathProb_zero (k : ℕ) (hk : 1 ≤ k) (t : ℝ) : deathProb k 0 t = 0 := by
-  simp [deathProb, absorb_deathPow_zero _ _ hk]
 
 private theorem absorb_tavareCoeff_one (k : ℕ) (hk : 1 ≤ k) : tavareCoeff k 1 1 = 1 := by
   have hk' : (k : ℝ) ≠ 0 := by exact_mod_cast (show k ≠ 0 by omega)
@@ -63,7 +50,7 @@ private theorem absorb_tendsto_exp (m : ℕ) (hm : 1 ≤ m) :
 theorem tendsto_deathProb (k j : ℕ) (hk : 1 ≤ k) :
     Tendsto (deathProb k j) atTop (𝓝 (if j = 1 then 1 else 0)) := by
   rcases Nat.eq_zero_or_pos j with rfl | hj
-  · have h : deathProb k 0 = fun _ => 0 := funext fun t => absorb_deathProb_zero k hk t
+  · have h : deathProb k 0 = fun _ => 0 := funext fun t => deathProb_zero_right hk t
     rw [h, ite_eq_right (by norm_num)]
     exact tendsto_const_nhds
   rcases lt_or_ge k j with hkj | hjk
@@ -182,5 +169,99 @@ theorem kingmanTransition_mul_kingmanAbsorption {F : Finset (Finset L)} (hF : Is
         exact (jumpMatrix_pow_support hF (right_ne_zero_of_mul h)).1
       exact (tendsto_kingmanTransition hF' G).const_mul _
   exact tendsto_nhds_unique hlim2 hlim
+
+/-! ### Lumping along a map of forests -/
+
+section Lumping
+
+variable {L' : Type*} [Fintype L'] [DecidableEq L']
+
+/-- The generator is supported on the forest itself and its merges. -/
+private theorem lump_kingmanGenerator_ne_zero {F G : Finset (Finset L)} (hF : IsForest F)
+    (h : kingmanGenerator F G ≠ 0) : IsForest G := by
+  rw [kingmanGenerator_apply_of_isForest] at h
+  split_ifs at h with h1 h2
+  · exact h1 ▸ hF
+  · exact (hF.of_mem_merges h2).1
+  · exact absurd rfl h
+
+private theorem lump_sum_kingmanGenerator_pow {Φ : Finset (Finset L) → Finset (Finset L')}
+    (hΦ : ∀ F, IsForest F → ∀ w : Finset (Finset L') → ℝ,
+      ∑ G, kingmanGenerator F G * w (Φ G) = ∑ G', kingmanGenerator (Φ F) G' * w G')
+    (n : ℕ) {F : Finset (Finset L)} (hF : IsForest F) (w : Finset (Finset L') → ℝ) :
+    ∑ G, (kingmanGenerator ^ n) F G * w (Φ G) = ∑ G', (kingmanGenerator ^ n) (Φ F) G' * w G' := by
+  induction n generalizing F w with
+  | zero =>
+    simp only [pow_zero, Matrix.one_apply, ite_mul, one_mul, zero_mul, sum_ite_eq, mem_univ,
+      ite_true]
+  | succ n ih =>
+    set u : Finset (Finset L') → ℝ := fun H' => ∑ G', (kingmanGenerator ^ n) H' G' * w G'
+      with hu
+    have hstep : ∀ H : Finset (Finset L), kingmanGenerator F H *
+        ∑ G, (kingmanGenerator ^ n) H G * w (Φ G) = kingmanGenerator F H * u (Φ H) := by
+      intro H
+      by_cases hQ : kingmanGenerator F H = 0
+      · rw [hQ, zero_mul, zero_mul]
+      · rw [ih (lump_kingmanGenerator_ne_zero hF hQ) w]
+    calc ∑ G, (kingmanGenerator ^ (n + 1)) F G * w (Φ G)
+        = ∑ H, kingmanGenerator F H * ∑ G, (kingmanGenerator ^ n) H G * w (Φ G) := by
+          simp_rw [pow_succ', Matrix.mul_apply, sum_mul]
+          rw [sum_comm]
+          simp_rw [mul_sum, mul_assoc]
+      _ = ∑ H, kingmanGenerator F H * u (Φ H) := sum_congr rfl fun H _ => hstep H
+      _ = ∑ H', kingmanGenerator (Φ F) H' * u H' := hΦ F hF u
+      _ = ∑ G', (kingmanGenerator ^ (n + 1)) (Φ F) G' * w G' := by
+          simp_rw [hu, pow_succ', Matrix.mul_apply, sum_mul, mul_sum, mul_assoc]
+          rw [sum_comm]
+
+set_option backward.isDefEq.respectTransparency false in
+/-- **Lumpability from the generator.** A map `Φ` of forests that intertwines the generators lumps
+Kingman's coalescent, tested against a function `w` of the image. -/
+theorem sum_kingmanTransition_comp {Φ : Finset (Finset L) → Finset (Finset L')}
+    (hΦ : ∀ F, IsForest F → ∀ w : Finset (Finset L') → ℝ,
+      ∑ G, kingmanGenerator F G * w (Φ G) = ∑ G', kingmanGenerator (Φ F) G' * w G')
+    {F : Finset (Finset L)} (hF : IsForest F) (t : ℝ) (w : Finset (Finset L') → ℝ) :
+    ∑ G, kingmanTransition t F G * w (Φ G) = ∑ G', kingmanTransition t (Φ F) G' * w G' := by
+  have h1 : HasSum (fun n : ℕ => ∑ G, ((n.factorial : ℝ))⁻¹ *
+      ((t • kingmanGenerator (L := L)) ^ n) F G * w (Φ G))
+      (∑ G, kingmanTransition t F G * w (Φ G)) :=
+    hasSum_sum fun G _ => (hasSum_exp_apply _ F G).mul_right _
+  have h2 : HasSum (fun n : ℕ => ∑ G', ((n.factorial : ℝ))⁻¹ *
+      ((t • kingmanGenerator (L := L')) ^ n) (Φ F) G' * w G')
+      (∑ G', kingmanTransition t (Φ F) G' * w G') :=
+    hasSum_sum fun G' _ => (hasSum_exp_apply _ _ G').mul_right _
+  refine h1.unique ?_
+  convert h2 using 1
+  funext n
+  simp_rw [smul_pow, Matrix.smul_apply, smul_eq_mul, mul_assoc, ← mul_sum]
+  rw [lump_sum_kingmanGenerator_pow hΦ n hF w]
+
+/-- Lumpability from the generator, at one forest of the image. -/
+theorem kingmanTransition_comp {Φ : Finset (Finset L) → Finset (Finset L')}
+    (hΦ : ∀ F, IsForest F → ∀ w : Finset (Finset L') → ℝ,
+      ∑ G, kingmanGenerator F G * w (Φ G) = ∑ G', kingmanGenerator (Φ F) G' * w G')
+    {F : Finset (Finset L)} (hF : IsForest F) (t : ℝ) (G' : Finset (Finset L')) :
+    ∑ G, (if Φ G = G' then kingmanTransition t F G else 0) = kingmanTransition t (Φ F) G' := by
+  have h := sum_kingmanTransition_comp hΦ hF t fun G'' => if G'' = G' then 1 else 0
+  simp only [mul_ite, mul_one, mul_zero, sum_ite_eq', mem_univ, ite_true] at h
+  exact h
+
+/-- Lumpability from the generator, for the coalescent over an infinite time. -/
+theorem kingmanAbsorption_comp {Φ : Finset (Finset L) → Finset (Finset L')}
+    (hΦ : ∀ F, IsForest F → ∀ w : Finset (Finset L') → ℝ,
+      ∑ G, kingmanGenerator F G * w (Φ G) = ∑ G', kingmanGenerator (Φ F) G' * w G')
+    {F : Finset (Finset L)} (hF : IsForest F) (hΦF : IsForest (Φ F)) (G' : Finset (Finset L')) :
+    ∑ G, (if Φ G = G' then kingmanAbsorption F G else 0) = kingmanAbsorption (Φ F) G' := by
+  have h1 : Filter.Tendsto (fun t => ∑ G, (if Φ G = G' then kingmanTransition t F G else 0))
+      Filter.atTop (nhds (∑ G, (if Φ G = G' then kingmanAbsorption F G else 0))) := by
+    refine tendsto_finsetSum _ fun G _ => ?_
+    split_ifs
+    · exact tendsto_kingmanTransition hF G
+    · exact tendsto_const_nhds
+  have h2 := tendsto_kingmanTransition hΦF G'
+  simp_rw [kingmanTransition_comp hΦ hF] at h1
+  exact tendsto_nhds_unique h1 h2
+
+end Lumping
 
 end Phylogenetics

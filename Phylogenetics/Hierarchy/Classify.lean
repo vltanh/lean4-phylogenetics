@@ -77,38 +77,6 @@ def binaryRootings5 : Finset (Finset (Finset (Fin 5))) :=
 
 /-! ### Unrooting and relabelling -/
 
-theorem classify_mem_unroot {G : Finset (Finset X)} {A : Finset X} :
-    A ∈ unroot G ↔ (A ∈ G ∧ A ≠ univ) ∨ (Aᶜ ∈ G ∧ Aᶜ ≠ univ) := by
-  unfold unroot
-  simp only [mem_union, mem_erase, mem_image]
-  constructor
-  · rintro (⟨h1, h2⟩ | ⟨B, ⟨h1, h2⟩, rfl⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · exact Or.inr ⟨by simpa using h2, by simpa using h1⟩
-  · rintro (⟨h1, h2⟩ | ⟨h1, h2⟩)
-    · exact Or.inl ⟨h2, h1⟩
-    · exact Or.inr ⟨Aᶜ, ⟨h2, h1⟩, compl_compl A⟩
-
-theorem classify_compl_mem_unroot {G : Finset (Finset X)} {A : Finset X} :
-    Aᶜ ∈ unroot G ↔ A ∈ unroot G := by
-  rw [classify_mem_unroot, classify_mem_unroot, compl_compl, or_comm]
-
-omit [Fintype X] [DecidableEq X] in
-theorem classify_mem_relabelFamily {Y : Type*} [DecidableEq Y] {e : X ≃ Y}
-    {F : Finset (Finset X)} {B : Finset Y} :
-    B ∈ relabelFamily e F ↔ B.map e.symm.toEmbedding ∈ F := by
-  unfold relabelFamily
-  rw [mem_image]
-  constructor
-  · rintro ⟨A, hA, rfl⟩
-    convert hA using 1
-    ext x
-    simp [mem_map_equiv]
-  · intro h
-    refine ⟨_, h, ?_⟩
-    ext y
-    simp [mem_map_equiv]
-
 omit [Fintype X] [DecidableEq X] in
 theorem classify_relabelFamily_trans {Y Z : Type*} [DecidableEq Y] [DecidableEq Z] (e : X ≃ Y)
     (f : Y ≃ Z) (F : Finset (Finset X)) :
@@ -123,7 +91,7 @@ theorem classify_relabelFamily_trans {Y Z : Type*} [DecidableEq Y] [DecidableEq 
 
 theorem classify_card_of_mem_unroot (σ : SpeciesTree X) {A : Finset X}
     (h : A ∈ unroot σ.clusters) : 1 ≤ #A ∧ #A < Fintype.card X := by
-  rcases classify_mem_unroot.1 h with ⟨h1, h2⟩ | ⟨h1, h2⟩
+  rcases mem_unroot.1 h with ⟨h1, h2⟩ | ⟨h1, h2⟩
   · exact ⟨(σ.nonempty_of_mem A h1).card_pos, (card_lt_iff_ne_univ A).2 h2⟩
   · have h3 := (σ.nonempty_of_mem _ h1).card_pos
     have h4 := (card_lt_iff_ne_univ _).2 h2
@@ -133,7 +101,7 @@ theorem classify_card_of_mem_unroot (σ : SpeciesTree X) {A : Finset X}
 
 theorem classify_singleton_mem_unroot (hX : 2 ≤ Fintype.card X) (σ : SpeciesTree X) (x : X) :
     {x} ∈ unroot σ.clusters := by
-  refine classify_mem_unroot.2 (Or.inl ⟨σ.singleton_mem x, ?_⟩)
+  refine mem_unroot.2 (Or.inl ⟨σ.singleton_mem x, ?_⟩)
   intro h
   have := congrArg card h
   rw [card_singleton, card_univ] at this
@@ -156,16 +124,16 @@ theorem classify_mem_unroot_iff (hX : Fintype.card X = 4 ∨ Fintype.card X = 5)
     · exact Or.inl h3
     · exact Or.inr (Or.inl h3)
     · exact Or.inr (Or.inr (Or.inl (mem_filter.2 ⟨h, h3⟩)))
-    · exact Or.inr (Or.inr (Or.inr (mem_filter.2 ⟨classify_compl_mem_unroot.2 h, h3⟩)))
+    · exact Or.inr (Or.inr (Or.inr (mem_filter.2 ⟨compl_mem_unroot.2 h, h3⟩)))
   · rintro (h | h | h | h)
     · obtain ⟨x, rfl⟩ := card_eq_one.1 h
       exact classify_singleton_mem_unroot h2 σ x
     · have : #Aᶜ = 1 := by rw [card_compl]; omega
       obtain ⟨x, hx⟩ := card_eq_one.1 this
-      rw [← classify_compl_mem_unroot, hx]
+      rw [← compl_mem_unroot, hx]
       exact classify_singleton_mem_unroot h2 σ x
     · exact (mem_filter.1 h).1
-    · exact classify_compl_mem_unroot.1 (mem_filter.1 h).1
+    · exact compl_mem_unroot.1 (mem_filter.1 h).1
 
 /-- Transport of the unrooted tree along a relabelling, given the sides with two taxa. -/
 theorem classify_unroot_relabel_eq {Y : Type*} [Fintype Y] [DecidableEq Y] {n : ℕ}
@@ -177,8 +145,8 @@ theorem classify_unroot_relabel_eq {Y : Type*} [Fintype Y] [DecidableEq Y] {n : 
   show unroot (relabelFamily e.symm σ.clusters) = U
   rw [unroot_relabelFamily]
   ext A
-  rw [classify_mem_relabelFamily, Equiv.symm_symm, classify_mem_unroot_iff (by omega) σ,
-    hU A (mem_univ A), hP, card_map, hX, classify_mem_relabelFamily, classify_mem_relabelFamily]
+  rw [mem_relabelFamily, Equiv.symm_symm, classify_mem_unroot_iff (by omega) σ,
+    hU A (mem_univ A), hP, card_map, hX, mem_relabelFamily, mem_relabelFamily]
   have h1 : (A.map e.toEmbedding).map e.symm.toEmbedding = A := by
     ext; simp [mem_map_equiv]
   have h2 : (A.map e.toEmbedding)ᶜ.map e.symm.toEmbedding = Aᶜ := by
@@ -194,8 +162,8 @@ theorem classify_disjoint_of_card_two (hX : Fintype.card X = 5) (σ : SpeciesTre
   have hBc : #Bᶜ = 3 := by rw [card_compl, hX, hB2]
   have key : ∀ C D : Finset X, C ⊆ D → #D ≤ #C → C = D := fun C D h1 h2 =>
     eq_of_subset_of_card_le h1 h2
-  rcases classify_mem_unroot.1 hA with ⟨hA', -⟩ | ⟨hA', -⟩ <;>
-    rcases classify_mem_unroot.1 hB with ⟨hB', -⟩ | ⟨hB', -⟩
+  rcases mem_unroot.1 hA with ⟨hA', -⟩ | ⟨hA', -⟩ <;>
+    rcases mem_unroot.1 hB with ⟨hB', -⟩ | ⟨hB', -⟩
   · rcases σ.laminar _ hA' _ hB' with h | h | h
     · exact hAB (key _ _ h (by omega))
     · exact hAB (key _ _ h (by omega)).symm
@@ -240,8 +208,8 @@ theorem classify_eq_or_eq_compl_of_card_two (hX : Fintype.card X = 4) (σ : Spec
   have hBc : #Bᶜ = 2 := by rw [card_compl, hX, hB2]
   have key : ∀ C D : Finset X, C ⊆ D → #D ≤ #C → C = D := fun C D h1 h2 =>
     eq_of_subset_of_card_le h1 h2
-  rcases classify_mem_unroot.1 hA with ⟨hA', -⟩ | ⟨hA', -⟩ <;>
-    rcases classify_mem_unroot.1 hB with ⟨hB', -⟩ | ⟨hB', -⟩
+  rcases mem_unroot.1 hA with ⟨hA', -⟩ | ⟨hA', -⟩ <;>
+    rcases mem_unroot.1 hB with ⟨hB', -⟩ | ⟨hB', -⟩
   · rcases σ.laminar _ hA' _ hB' with h | h | h
     · exact h1 (key _ _ h (by omega)).symm
     · exact h1 (key _ _ h (by omega))
@@ -303,13 +271,13 @@ theorem classify_mem_of_forall {τ : SpeciesTree X} {U C S : Finset (Finset X)}
   · rw [mem_powerset]
     intro A hA
     rw [mem_filter] at hA
-    exact hC A (h ▸ classify_mem_unroot.2 (Or.inl ⟨hA.1, hA.2.2⟩)) hA.2.1
+    exact hC A (h ▸ mem_unroot.2 (Or.inl ⟨hA.1, hA.2.2⟩)) hA.2.1
   · intro A hA B hB
     exact τ.laminar A (mem_filter.1 hA).1 B (mem_filter.1 hB).1
   · intro A hA
     obtain ⟨hAU, h2, h2c⟩ := hS A hA
     rw [← h] at hAU
-    rcases classify_mem_unroot.1 hAU with ⟨h1, h1'⟩ | ⟨h1, h1'⟩
+    rcases mem_unroot.1 hAU with ⟨h1, h1'⟩ | ⟨h1, h1'⟩
     · exact Or.inl (mem_filter.2 ⟨h1, h2, h1'⟩)
     · exact Or.inr (mem_filter.2 ⟨h1, h2c, h1'⟩)
 
@@ -465,7 +433,7 @@ theorem exists_equiv_unroot_eq_U4 (hX : Fintype.card X = 4) (σ : SpeciesTree X)
         exact classify_eq_or_eq_compl_of_card_two hX σ hA.1 hB hA.2 hB2
       · rintro (rfl | rfl)
         · exact hA
-        · exact ⟨classify_compl_mem_unroot.2 hA.1, hAc2⟩
+        · exact ⟨compl_mem_unroot.2 hA.1, hAc2⟩
     obtain ⟨p, q, hpq, hpqA⟩ := card_eq_two.1 hA.2
     obtain ⟨r, s, hrs, hrsA⟩ := card_eq_two.1 hAc2
     have hp : p ∈ A := by rw [hpqA]; simp
@@ -531,7 +499,7 @@ theorem exists_equiv_unroot_eq_U5 (hX : Fintype.card X = 5) (σ : SpeciesTree X)
     rw [← hPdef, hP]
     simp [relabelFamily, he]
 
-theorem classify_mem_rootings5 (τ : SpeciesTree (Fin 5)) (k : ℕ)
+theorem mem_rootings5 (τ : SpeciesTree (Fin 5)) (k : ℕ)
     (hk : k ∈ ({0, 1, 2} : Finset ℕ)) (h : unroot τ.clusters = U5 k) :
     τ.clusters ∈ rootings5 k := by
   simp only [mem_insert, mem_singleton] at hk
@@ -547,7 +515,7 @@ theorem exists_equiv_unroot_eq_U5_two_of_isBinary (hX : Fintype.card X = 5) (σ 
   obtain ⟨e, k, hk, h⟩ := exists_equiv_unroot_eq_U5 hX σ
   refine ⟨e, ?_⟩
   have hb : (σ.relabel e.symm).IsBinary := (σ.isBinary_relabel_iff e.symm).2 hσ
-  have hmem := classify_mem_rootings5 _ k hk h
+  have hmem := mem_rootings5 _ k hk h
   simp only [mem_insert, mem_singleton] at hk
   rcases hk with rfl | rfl | rfl
   · exact absurd hb (classify_not_binary_of_mem_rootings5_zero _ hmem)
@@ -561,12 +529,13 @@ theorem mem_rootings4 (τ : SpeciesTree (Fin 4)) (k : ℕ) (hk : k ∈ ({0, 1} :
   · exact classify_mem_of_forall classify_rootings4_zero classify_cands4_zero (by simp) h
   · exact classify_mem_of_forall classify_rootings4_one classify_cands4_one classify_splits4_one h
 
-theorem mem_rootings5 (τ : SpeciesTree (Fin 5)) (k : ℕ) (hk : k ∈ ({0, 1, 2} : Finset ℕ))
-    (h : unroot τ.clusters = U5 k) : τ.clusters ∈ rootings5 k :=
-  classify_mem_rootings5 τ k hk h
-
 theorem mem_binaryRootings5 (τ : SpeciesTree (Fin 5)) (hτ : τ.IsBinary)
     (h : unroot τ.clusters = U5 2) : τ.clusters ∈ binaryRootings5 :=
-  classify_binary_of_mem_rootings5_two _ (classify_mem_rootings5 τ 2 (by simp) h) hτ
+  classify_binary_of_mem_rootings5_two _ (mem_rootings5 τ 2 (by simp) h) hτ
+
+@[deprecated (since := "2026-10-31")] alias classify_mem_unroot := mem_unroot
+@[deprecated (since := "2026-10-31")] alias classify_compl_mem_unroot := compl_mem_unroot
+@[deprecated (since := "2026-10-31")] alias classify_mem_relabelFamily := mem_relabelFamily
+@[deprecated (since := "2026-10-31")] alias classify_mem_rootings5 := mem_rootings5
 
 end Phylogenetics
