@@ -375,15 +375,19 @@ def block_summary(c: col.Collection, hub: str) -> str:
 
 
 def block_papers(c: col.Collection, hub: str) -> str:
-    """The checklist of the hub's papers, family by family: a paper is checked once formalized."""
+    """The checklist of the hub's papers, family by family: a paper is checked once formalized, and
+    a landmark of the field is in bold."""
     out = []
     fams = sorted(f for (h, f) in c.families if h == hub)
+    if any(p.landmark for p in c.papers if p.hub == hub):
+        out.append('The landmarks of the field are in bold.\n')
     for fid in fams:
         fam = c.families[(hub, fid)]
         if len(fams) > 1:
             out.append(f'### {fid}. {fam["title"]}\n')
         for p in c.in_family(hub, fid):
-            item = f'- [{"x" if p.status == "formalized" else " "}] {p.authors} ({p.year}), [{p.title}]({p.url})'
+            cite = f'{p.authors} ({p.year}), [{p.title}]({p.url})'
+            item = f'- [{"x" if p.status == "formalized" else " "}] ' + (f'**{cite}**' if p.landmark else cite)
             repo = f'[{p.repo}]({p.github})' if p.commit else ''
             if p.status == 'formalized':
                 item += f': {repo}' + ('' if c.on_train(p.repo) else ' (off the train)')

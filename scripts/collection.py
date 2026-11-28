@@ -59,6 +59,7 @@ class Paper:
     builds_on: list[str] = field(default_factory=list)
     covered_by: list[dict] = field(default_factory=list)
     note: str = ''
+    landmark: bool = False  # a landmark of the field, on the shorter route through it
 
     def __post_init__(self):
         if not self.repo:
@@ -246,6 +247,8 @@ class Collection:
                 other = seen_paper.setdefault(p.paper, p)
                 if other.repo != p.repo:   # within a repository, the check below reports it
                     errors.append(f'{where}: paper {p.paper!r} is also that of {other.id!r}')
+            if not isinstance(p.landmark, bool):
+                errors.append(f'{where}: landmark is true or false')
             if p.status not in STATUSES:
                 errors.append(f'{where}: status {p.status!r} is not one of {STATUSES}')
             if p.kind not in KINDS:
