@@ -72,7 +72,7 @@ url = "https://github.com/formal-phylogenetics/lean4-phylo-gene-tree"
 lean = "v4.37.0-rc1"
 require = "always"
 title = "Gene tree estimation"
-summary = "What the papers on estimating a tree from sequences share and the root library does not hold: nothing yet. Its catalog has the papers on maximum likelihood and tree search, distance methods and minimum evolution, substitution models and their selection, parsimony, Bayesian inference and MCMC, branch support, rooting and tests, and divide-and-conquer reconstruction"
+summary = "What the papers on estimating a tree from sequences share and the root library does not hold: nothing yet. Its catalog has the papers on maximum likelihood and tree search, distance methods and minimum evolution, substitution models and their selection, parsimony, Bayesian inference and MCMC, branch support, rooting and tests, divide-and-conquer reconstruction, the reconstruction of ancestral states and sequences, and alignment-free inference"
 
 [[repo]]
 name = "lean4-phylo-species-tree"
@@ -84,7 +84,7 @@ url = "https://github.com/formal-phylogenetics/lean4-phylo-species-tree"
 lean = "v4.37.0-rc1"
 require = "always"
 title = "Species tree estimation"
-summary = "What the papers on estimating species trees share and the root library does not hold: nothing yet. Its catalog has the papers on species trees from gene trees (quartets, rooted triplets and clades, distances), from sequences directly, by full likelihood and Bayesian inference, and under duplication, loss and transfer; on rooting, branch lengths and tests, on the coalescent and the limits of particular estimators, and on divide-and-conquer pipelines"
+summary = "What the papers on estimating species trees share and the root library does not hold: nothing yet. Its catalog has the papers on species trees from gene trees (quartets, rooted triplets and clades, distances), from sequences directly, by full likelihood and Bayesian inference, and under duplication, loss and transfer; on rooting, branch lengths and tests, on the coalescent and the limits of particular estimators, on divide-and-conquer pipelines, and on supertrees and the merging of trees"
 
 [[repo]]
 name = "lean4-phylo-network"
@@ -131,7 +131,7 @@ url = "https://github.com/formal-phylogenetics/lean4-phylo-combinatorics"
 lean = "v4.37.0-rc1"
 require = "always"
 title = "The combinatorics of phylogenetic trees and networks"
-summary = "What the papers on the combinatorics of trees share and the root library does not hold: nothing yet. Its catalog has the papers on the characterization, comparison and reconstruction of trees, perfect phylogeny and the compatibility of characters, the decomposition of networks with recombination, and the amalgamation of quartets, with the computational complexity of these problems"
+summary = "What the papers on the combinatorics of trees share and the root library does not hold: nothing yet. Its catalog has the papers on the characterization, comparison and reconstruction of trees, perfect phylogeny and the compatibility of characters, the decomposition of networks with recombination, the amalgamation of quartets, the shape and balance of trees, induced subtrees and decks, the structure and enumeration of networks, and phylogenetic diversity, with the computational complexity of these problems"
 
 [[repo]]
 name = "lean4-phylo-algebraic"
@@ -155,7 +155,7 @@ url = "https://github.com/formal-phylogenetics/lean4-phylo-statistics"
 lean = "v4.37.0-rc1"
 require = "always"
 title = "The statistical theory of phylogenetic inference"
-summary = "What the papers on the statistical theory of phylogenetic inference share and the root library does not hold: nothing yet. Its catalog has the papers on fast convergence and sample complexity, consistency and model misspecification, gene-tree discordance and the limits of species-tree inference, the identifiability and consistency of indel models, and tests near singularities and boundaries"
+summary = "What the papers on the statistical theory of phylogenetic inference share and the root library does not hold: nothing yet. Its catalog has the papers on fast convergence and sample complexity, consistency and model misspecification, gene-tree discordance and the limits of species-tree inference, the identifiability and consistency of indel models, tests near singularities and boundaries, and random phylogenies"
 
 [[repo]]
 name = "lean4-phylo-geometry"
@@ -185,7 +185,7 @@ note = "Requires lean4-phylogenetics and lean4-phylo-network at the train's pins
 [[repo]]
 name = "lean4-allman2011"
 role = "paper"
-parent = "lean4-phylo-species-tree"
+parent = "lean4-phylo-statistics"
 package = "Allman2011"
 root = "Allman2011"
 url = "https://github.com/formal-phylogenetics/lean4-allman2011"
@@ -193,7 +193,7 @@ lean = "v4.37.0-rc1"
 require = "when-needed"
 commit = "d4ada2c6cbbb5b8629eb9740dc5d5a9984a06a78"
 summary = "Allman, Degnan, Rhodes 2011: the rooted species tree from unrooted gene trees under the coalescent, stated on the species trees of lean4-phylogenetics"
-note = "Requires lean4-phylogenetics at the train's pin, which holds its general parts, and not PhyloSpeciesTree, the library of its hub, which it predates; has the layout of a paper's repository (root and paper Allman2011)"
+note = "Requires lean4-phylogenetics at the train's pin, which holds its general parts, and not PhyloStatistics, the library of its hub, which it predates; has the layout of a paper's repository (root and paper Allman2011)"
 
 [[repo]]
 name = "lean4-gusfield2007"
